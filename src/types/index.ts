@@ -59,6 +59,38 @@ export interface BusinessCertification {
   evidence_url?: string;
 }
 
+export interface ResearchSource {
+  title: string;
+  url: string;
+}
+
+export interface BusinessProspectMatch {
+  id: string;
+  company_name: string;
+  website: string;
+  industry_id: IndustryCode;
+  company_type: string;
+  location: string;
+  description: string;
+  match_reason: string;
+  matched_offerings: string[];
+  sources: ResearchSource[];
+  discovered_at: string;
+  approved_at?: string;
+}
+
+export interface BusinessProfileResearchDraft {
+  company_name: string;
+  website: string;
+  country_code: string;
+  business_summary: string;
+  target_regions: string[];
+  target_industries: IndustryCode[];
+  offerings: BusinessOffering[];
+  certifications: BusinessCertification[];
+  sources: ResearchSource[];
+}
+
 export interface ScoringWeights {
   service_compatibility: number;     // e.g. 25
   project_relevance: number;         // e.g. 25
@@ -79,6 +111,9 @@ export interface BusinessProfile {
   target_industries: IndustryCode[];
   offerings: BusinessOffering[];
   certifications: BusinessCertification[];
+  profile_sources?: ResearchSource[];
+  profile_approved_at?: string;
+  approved_prospects?: BusinessProspectMatch[];
   scoring_weights: ScoringWeights;
   version: number;
   updated_at: string;

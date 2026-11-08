@@ -58,7 +58,7 @@ interface AppContextType {
   activeIndustry: IndustryCode | 'all';
   setActiveIndustry: (industry: IndustryCode | 'all') => void;
   businessProfile: BusinessProfile;
-  updateBusinessProfile: (profile: Partial<BusinessProfile>) => void;
+  updateBusinessProfile: (profile: Partial<BusinessProfile>) => Promise<BusinessProfile>;
   updateScoringWeights: (weights: ScoringWeights) => void;
 
   // Intelligence Entities
@@ -823,14 +823,17 @@ ${businessProfile.company_name}`;
     return true;
   };
 
-  const updateBusinessProfile = (profileUpdate: Partial<BusinessProfile>) => {
-    setBusinessProfile((prev) => ({
-      ...prev,
+  const updateBusinessProfile = async (profileUpdate: Partial<BusinessProfile>): Promise<BusinessProfile> => {
+    const nextProfile = {
+      ...businessProfile,
       ...profileUpdate,
-      version: prev.version + 1,
+      version: businessProfile.version + 1,
       updated_at: new Date().toISOString(),
-    }));
+    };
+    const savedProfile = demoMode ? nextProfile : await api.updateProfile(profileUpdate);
+    setBusinessProfile(savedProfile);
     logAudit('BUSINESS_PROFILE_UPDATED', 'BusinessProfile', businessProfile.id, 'Updated profile and offerings.');
+    return savedProfile;
   };
 
   const updateScoringWeights = (weights: ScoringWeights) => {

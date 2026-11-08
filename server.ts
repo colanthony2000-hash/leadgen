@@ -182,6 +182,32 @@ app.put('/api/profile', requireRoles('owner', 'admin'), (req: Request, res: Resp
   res.json(updated);
 });
 
+app.post('/api/profile/research', requireRoles('owner', 'admin'), async (req: Request, res: Response) => {
+  try {
+    const draft = await worker.researchBusinessProfile({
+      website: typeof req.body?.website === 'string' ? req.body.website : undefined,
+      company_name: typeof req.body?.company_name === 'string' ? req.body.company_name : undefined,
+      context: typeof req.body?.context === 'string' ? req.body.context : undefined,
+    });
+    res.json(draft);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Company research failed.' });
+  }
+});
+
+app.post('/api/profile/prospects', requireRoles('owner', 'admin'), async (req: Request, res: Response) => {
+  const tenantReq = req as TenantRequest;
+  const profile = db.getBusinessProfile(tenantReq.tenantId);
+  if (!profile.profile_approved_at) return res.status(409).json({ error: 'Review and approve your business profile before searching for prospects.' });
+  if (!profile.offerings.length) return res.status(409).json({ error: 'Add or approve at least one offering before searching for prospects.' });
+  try {
+    const matches = await worker.findBusinessProspects(profile);
+    res.json(matches);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Prospect search failed.' });
+  }
+});
+
 app.put('/api/profile/scoring', requireRoles('owner', 'admin', 'manager'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { scoring_weights } = req.body;

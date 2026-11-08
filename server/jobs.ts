@@ -1,6 +1,6 @@
 import { db, AsyncBackgroundJob } from './db';
 import { GoogleGenAI } from '@google/genai';
-import { ResearchJob, CreditTransaction } from '../src/types';
+import { ResearchJob, CreditTransaction, BusinessProfileResearchDraft, BusinessProspectMatch, BusinessProfile, IndustryCode } from '../src/types';
 
 const GEMINI_RESEARCH_MODEL = 'gemini-3.8-flash';
 
@@ -31,6 +31,64 @@ export class BackgroundJobWorker {
     if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
       this.aiClient = new GoogleGenAI({ apiKey });
     }
+  }
+
+  private async groundedJson(prompt: string): Promise<{ data: any; sources: Array<{ title: string; url: string }> }> {
+    if (!this.aiClient) throw new Error('AI research is unavailable because GEMINI_API_KEY is not configured.');
+    const response = await this.aiClient.models.generateContent({
+      model: GEMINI_RESEARCH_MODEL,
+      contents: prompt,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+    if (!response.text) throw new Error('Google Search returned an empty response.');
+    const text = response.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    let data: any;
+    try { data = JSON.parse(text); } catch { throw new Error('AI research returned an invalid structured response. Please try again.'); }
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const sources = chunks.flatMap((chunk: any) => chunk.web?.uri ? [{ title: chunk.web.title || chunk.web.uri, url: chunk.web.uri }] : []);
+    return { data, sources: [...new Map(sources.map((source) => [source.url, source])).values()] };
+  }
+
+  public async researchBusinessProfile(input: { website?: string; company_name?: string; context?: string }): Promise<BusinessProfileResearchDraft> {
+    const website = String(input.website || '').trim();
+    const companyName = String(input.company_name || '').trim();
+    if (!website && !companyName) throw new Error('Enter a company website or company name to begin.');
+    if (website && !/^https?:\/\//i.test(website)) throw new Error('Enter a valid website beginning with https:// or http://.');
+    const { data, sources } = await this.groundedJson(`Research this company using Google Search. Company website: ${website || 'not supplied'}. Company name: ${companyName || 'identify from website'}. Additional context: ${String(input.context || '').slice(0, 1200) || 'none'}.
+Use the official website and reliable public sources. Extract the company identity, what it actually sells or provides, certifications only when explicitly evidenced, countries/regions and industries it serves. Do not guess or invent facts. Keep unknown fields empty. Return JSON only with keys: company_name (string), website (string), country_code (ISO 3166-1 alpha-2 string or empty), business_summary (string), target_regions (string[]), target_industries (array using only oil_and_gas, education, digital_products), offerings (array of {name, description, offering_type (product/service/capability), category_code, target_industry}), certifications (array of {name, issuer, valid_from, valid_to, evidence_url}). Keep offerings to concrete services/products/capabilities supported by sources. Do not include source URLs in the JSON.`);
+    const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products'];
+    const offerings = Array.isArray(data.offerings) ? data.offerings.slice(0, 20).map((item: any, index: number) => ({
+      id: `off-${Date.now()}-${index}`, name: String(item.name || '').slice(0, 160), description: String(item.description || '').slice(0, 800),
+      offering_type: ['product', 'service', 'capability'].includes(item.offering_type) ? item.offering_type : 'service',
+      category_code: String(item.category_code || 'general').slice(0, 80), target_industry: allowedIndustries.includes(item.target_industry) ? item.target_industry : 'digital_products',
+    })).filter((item: any) => item.name) : [];
+    const certifications = Array.isArray(data.certifications) ? data.certifications.slice(0, 20).map((item: any, index: number) => ({
+      id: `cert-${Date.now()}-${index}`, name: String(item.name || '').slice(0, 160), issuer: String(item.issuer || 'Not established'),
+      valid_from: String(item.valid_from || 'Unknown'), valid_to: String(item.valid_to || 'Unknown'),
+      ...(typeof item.evidence_url === 'string' && sources.some((source) => source.url === item.evidence_url) ? { evidence_url: item.evidence_url } : {}),
+    })).filter((item: any) => item.name) : [];
+    return {
+      company_name: String(data.company_name || companyName || '').slice(0, 200), website: String(data.website || website).slice(0, 300),
+      country_code: String(data.country_code || '').slice(0, 2).toUpperCase(), business_summary: String(data.business_summary || '').slice(0, 2500),
+      target_regions: Array.isArray(data.target_regions) ? data.target_regions.filter((value: unknown) => typeof value === 'string').slice(0, 30) : [],
+      target_industries: Array.isArray(data.target_industries) ? data.target_industries.filter((value: unknown): value is IndustryCode => allowedIndustries.includes(value as IndustryCode)) : [],
+      offerings, certifications, sources,
+    };
+  }
+
+  public async findBusinessProspects(profile: BusinessProfile): Promise<BusinessProspectMatch[]> {
+    const { data, sources } = await this.groundedJson(`Find up to 10 real organizations that may plausibly need or procure the following company's offerings. Search current public information using Google Search. Supplier: ${profile.company_name}; website: ${profile.website}; summary: ${profile.business_summary}; offerings: ${JSON.stringify(profile.offerings)}; target regions: ${JSON.stringify(profile.target_regions)}; target industries: ${JSON.stringify(profile.target_industries)}.
+Recommend potential buyers, operators, institutions, or organizations based on evidence of relevant operations, projects, or procurement. Do not say they currently need or are buying unless a source establishes it; otherwise phrase as potential fit. Exclude the supplier itself. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products","company_type":"","location":"","description":"short evidence-based description","match_reason":"why the supplied offering could fit; distinguish inference from sourced fact","matched_offerings":["offering name"],"source_urls":["URL returned by Google Search"]}]}. source_urls must be copied exactly from Google Search results and support the candidate; if none support a candidate, omit it. Do not invent people, contact details, procurement, URLs, or facts. Return an empty list if no credible candidates are found.`);
+    if (!Array.isArray(data.prospects)) throw new Error('AI prospect search returned an invalid response.');
+    const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products'];
+    const groundedSources = new Map(sources.map((source) => [source.url, source]));
+    return data.prospects.slice(0, 10).filter((item: any) => item.company_name && Array.isArray(item.source_urls) && item.source_urls.some((url: unknown) => typeof url === 'string' && groundedSources.has(url))).map((item: any, index: number) => ({
+      id: `prospect-${Date.now()}-${index}`, company_name: String(item.company_name).slice(0, 200), website: String(item.website || '').slice(0, 300),
+      industry_id: allowedIndustries.includes(item.industry_id) ? item.industry_id : 'digital_products', company_type: String(item.company_type || 'Organization').slice(0, 100),
+      location: String(item.location || 'Not established').slice(0, 160), description: String(item.description || '').slice(0, 1000),
+      match_reason: String(item.match_reason || '').slice(0, 1000), matched_offerings: Array.isArray(item.matched_offerings) ? item.matched_offerings.filter((value: unknown) => typeof value === 'string').slice(0, 10) : [],
+      sources: item.source_urls.filter((url: unknown) => typeof url === 'string' && groundedSources.has(url)).map((url: string) => groundedSources.get(url)!), discovered_at: new Date().toISOString(),
+    }));
   }
 
   // Trigger execution of a queued job asynchronously
