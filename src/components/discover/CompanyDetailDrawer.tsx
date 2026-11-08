@@ -22,6 +22,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { Company, Contact, PipelineStage } from '../../types';
+import { uniqueResearchLines, uniqueResearchText } from '../../utils/researchDisplay';
 
 interface CompanyDetailDrawerProps {
   company: Company | null;
@@ -466,7 +467,7 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
                       Executive Summary
                     </span>
                     <p className="text-xs text-slate-200 leading-relaxed">
-                      {companyResearch.result.executive_summary}
+                      {uniqueResearchLines(companyResearch.result.executive_summary)}
                     </p>
                   </div>
 
@@ -475,7 +476,7 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
                       Procurement Signals
                     </span>
                     <ul className="space-y-1.5 text-xs text-slate-300">
-                      {companyResearch.result.procurement_signals.map((sig, i) => (
+                      {uniqueResearchText(companyResearch.result.procurement_signals).map((sig, i) => (
                         <li key={i} className="flex items-start gap-2">
                           <span className="text-amber-400">·</span>
                           <span>{sig}</span>

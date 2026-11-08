@@ -12,6 +12,7 @@ import {
   Download
 } from 'lucide-react';
 import { ResearchJob } from '../../types';
+import { uniqueResearchLines, uniqueResearchText } from '../../utils/researchDisplay';
 
 export const ResearchHistory: React.FC = () => {
   const { researchJobs } = useApp();
@@ -75,7 +76,7 @@ export const ResearchHistory: React.FC = () => {
                 </h3>
 
                 <p className="text-xs text-slate-400 line-clamp-2 mt-1">
-                  {job.result?.executive_summary}
+                  {job.result?.executive_summary && uniqueResearchLines(job.result.executive_summary)}
                 </p>
 
                 <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500">
@@ -116,7 +117,7 @@ export const ResearchHistory: React.FC = () => {
                   Executive Summary
                 </h4>
                 <p className="text-xs text-slate-200 leading-relaxed p-4 rounded-xl bg-slate-950/70 border border-slate-800">
-                  {selectedJob.result.executive_summary}
+                  {uniqueResearchLines(selectedJob.result.executive_summary)}
                 </p>
               </div>
 
@@ -135,7 +136,7 @@ export const ResearchHistory: React.FC = () => {
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                   <h5 className="font-semibold text-slate-300">Procurement Signals</h5>
                   <ul className="space-y-1 text-slate-400">
-                    {selectedJob.result.procurement_signals.map((sig, i) => (
+                    {uniqueResearchText(selectedJob.result.procurement_signals).map((sig, i) => (
                       <li key={i}>• {sig}</li>
                     ))}
                   </ul>

@@ -16,6 +16,7 @@ import {
   Target
 } from 'lucide-react';
 import { NavItemKey } from '../layout/AppSidebar';
+import { uniqueResearchLines } from '../../utils/researchDisplay';
 
 interface OverviewDashboardProps {
   onNavigate: (view: NavItemKey) => void;
@@ -443,7 +444,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
               </div>
 
               <p className="text-xs text-slate-400 line-clamp-2">
-                {job.result?.executive_summary}
+                {job.result?.executive_summary && uniqueResearchLines(job.result.executive_summary)}
               </p>
 
               <div className="pt-2 border-t border-slate-900 flex items-center justify-between text-[11px] text-slate-400">

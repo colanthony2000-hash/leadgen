@@ -17,6 +17,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { Company, ResearchJob } from '../../types';
+import { consolidateGroundedFacts, uniqueResearchLines, uniqueResearchText } from '../../utils/researchDisplay';
 
 interface AiResearchWorkspaceProps {
   initialSubject?: {
@@ -82,6 +83,8 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
     education: 'Education & STEM',
     digital_products: 'Digital Products',
   }[activeIndustry];
+  const displayedFacts = activeJobResult?.result ? consolidateGroundedFacts(activeJobResult.result.known_facts) : [];
+  const displayedProcurementSignals = activeJobResult?.result ? uniqueResearchText(activeJobResult.result.procurement_signals) : [];
 
   const promptTemplates = [
     {
@@ -393,7 +396,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               1. Executive Summary & Strategic Context
             </h4>
             <p className="text-sm text-slate-200 leading-relaxed p-4 rounded-xl bg-slate-950/70 border border-slate-800">
-              {activeJobResult.result.executive_summary}
+              {uniqueResearchLines(activeJobResult.result.executive_summary)}
             </p>
           </div>
 
@@ -403,7 +406,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               2. Strategic Compatibility with Jeneconk Offerings
             </h4>
             <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-200 leading-relaxed">
-              {activeJobResult.result.strategic_fit_analysis}
+              {uniqueResearchLines(activeJobResult.result.strategic_fit_analysis)}
             </div>
           </div>
 
@@ -414,10 +417,10 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
                 Source-supported Procurement & Operational Signals
               </h4>
               <ul className="space-y-2 text-xs text-slate-300">
-                {activeJobResult.result.procurement_signals.length === 0 && (
+                {displayedProcurementSignals.length === 0 && (
                   <li className="text-slate-500">No procurement-related claims had grounding citations. Check the search queries and source list below.</li>
                 )}
-                {activeJobResult.result.procurement_signals.map((sig, i) => (
+                {displayedProcurementSignals.map((sig, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="text-amber-400 font-bold">✓</span>
                     <span>{sig}</span>
@@ -456,30 +459,32 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               </div>
             )}
             <div className="space-y-2">
-              {activeJobResult.result.known_facts.length === 0 && (
+              {displayedFacts.length === 0 && (
                 <p className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-400">
                   Google Search returned no claim-level citations for this request. Treat the AI summary as preliminary.
                 </p>
               )}
-              {activeJobResult.result.known_facts.map((fact, i) => (
+              {displayedFacts.map((fact, i) => (
                 <div
                   key={i}
                   className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 text-xs flex items-center justify-between gap-4"
                 >
-                  <div className="space-y-0.5">
+                  <div className="min-w-0 space-y-1.5">
                     <p className="text-slate-200 font-medium">{fact.claim}</p>
-                    <span className="text-[11px] text-slate-400">
-                      Grounded by: {fact.source_name}
-                    </span>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                      {(fact.sources?.length ? fact.sources : [{ source_name: fact.source_name, source_url: fact.source_url }]).map((source) => (
+                        <a
+                          key={source.source_url}
+                          href={source.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-amber-400 hover:underline"
+                        >
+                          {source.source_name} <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ))}
+                    </div>
                   </div>
-                  <a
-                    href={fact.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-amber-400 hover:underline text-[11px] flex items-center gap-1 shrink-0"
-                  >
-                    View Source <ExternalLink className="w-3 h-3" />
-                  </a>
                 </div>
               ))}
             </div>

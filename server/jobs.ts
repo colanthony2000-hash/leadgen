@@ -4,6 +4,25 @@ import { ResearchJob, CreditTransaction } from '../src/types';
 
 const GEMINI_RESEARCH_MODEL = 'gemini-3.8-flash';
 
+function normalizeResearchText(value: string): string {
+  return value
+    .replace(/^\s*(?:[-*•]|\d+[.)])\s*/u, '')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function uniqueBriefingLines(value: string): string {
+  const seen = new Set<string>();
+  return value.split(/\r?\n/u).map((line) => line.trim()).filter((line) => {
+    if (!line) return false;
+    const key = normalizeResearchText(line);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join('\n');
+}
+
 export class BackgroundJobWorker {
   private aiClient: GoogleGenAI | null = null;
 
@@ -97,22 +116,37 @@ Return a concise factual briefing. Separate confirmed information from gaps. Do 
 
     const grounding = searchResponse.candidates?.[0]?.groundingMetadata;
     const groundingChunks = grounding?.groundingChunks || [];
-    const groundedFacts = (grounding?.groundingSupports || []).flatMap((support) => {
+    const groundedFactMap = new Map<string, {
+      claim: string;
+      source_name: string;
+      source_url: string;
+      sources: Array<{ source_name: string; source_url: string }>;
+      confidence: 'medium';
+    }>();
+    for (const support of grounding?.groundingSupports || []) {
       const claim = support.segment?.text?.trim();
-      if (!claim) return [];
-      return (support.groundingChunkIndices || []).flatMap((chunkIndex) => {
+      if (!claim) continue;
+      const claimKey = normalizeResearchText(claim);
+      if (!claimKey) continue;
+      for (const chunkIndex of support.groundingChunkIndices || []) {
         const webSource = groundingChunks[chunkIndex]?.web;
-        if (!webSource?.uri) return [];
-        return [{
-          claim,
-          source_name: webSource.title || webSource.uri,
-          source_url: webSource.uri,
-          confidence: 'medium' as const,
-        }];
-      });
-    }).filter((fact, index, facts) =>
-      facts.findIndex((candidate) => candidate.claim === fact.claim && candidate.source_url === fact.source_url) === index
-    );
+        if (!webSource?.uri) continue;
+        const source = { source_name: webSource.title || webSource.uri, source_url: webSource.uri };
+        const existing = groundedFactMap.get(claimKey);
+        if (existing) {
+          if (!existing.sources.some((item) => item.source_url === source.source_url)) existing.sources.push(source);
+          continue;
+        }
+        groundedFactMap.set(claimKey, {
+          claim: claim.replace(/^\s*(?:[-*•]|\d+[.)])\s*/u, '').trim(),
+          ...source,
+          sources: [source],
+          confidence: 'medium',
+        });
+      }
+    }
+    const groundedFacts = [...groundedFactMap.values()];
+    const searchBriefing = uniqueBriefingLines(searchResponse.text);
 
     db.updateBackgroundJob(job.id, { progress_pct: 60 });
 
@@ -122,7 +156,7 @@ Subject: ${subject_name} (${subject_type || 'company'})
 Industry Sector: ${industry || 'General Industry'}
 Research Focus: ${question || 'Assess possible fit with the supplied offerings'}
 Business Offerings: ${JSON.stringify(offerings || [])}
-Google Search briefing: ${searchResponse.text}
+Google Search briefing: ${searchBriefing}
 Claims with Google Search grounding citations: ${JSON.stringify(groundedFacts)}
 
 Evidence rules:
@@ -132,6 +166,8 @@ Evidence rules:
 - Keep strategic_fit_analysis conditional on the supplied offerings. A fit assessment is not evidence of a current need.
 - If the cited claims are empty, say that no source-supported current facts were returned and keep the summary cautious.
 - Do not make claims about Jenecon credentials unless they appear in the supplied offerings.
+- State each distinct finding only once. Keep the executive summary to at most three sentences and do not repeat facts in the strategic-fit analysis.
+- Return no more than four suggested roles, with no duplicate roles. Remove duplicate critical unknowns.
 
 Return JSON with this shape:
 {
@@ -165,12 +201,25 @@ Return valid JSON only.`;
       throw new Error('AI research returned an invalid response structure.');
     }
 
+    synthesisResult.executive_summary = uniqueBriefingLines(synthesisResult.executive_summary);
+    synthesisResult.strategic_fit_analysis = uniqueBriefingLines(synthesisResult.strategic_fit_analysis);
+    synthesisResult.critical_unknowns = synthesisResult.critical_unknowns.filter((item: unknown, index: number, items: unknown[]) =>
+      typeof item === 'string' && items.findIndex((candidate) => typeof candidate === 'string' && normalizeResearchText(candidate) === normalizeResearchText(item)) === index
+    );
+    const seenRoles = new Set<string>();
+    synthesisResult.key_decision_makers = synthesisResult.key_decision_makers.filter((item: { name?: string; title?: string }) => {
+      const key = normalizeResearchText(`${item.name || ''} ${item.title || ''}`);
+      if (!key || seenRoles.has(key)) return false;
+      seenRoles.add(key);
+      return true;
+    }).slice(0, 4);
+
     const procurementKeywords = /tender|procurement|contract|rfp|bid|supplier|vendor|award|budget/i;
     synthesisResult.known_facts = groundedFacts;
     synthesisResult.procurement_signals = groundedFacts
       .filter((fact) => procurementKeywords.test(fact.claim))
       .map((fact) => fact.claim);
-    synthesisResult.search_queries = grounding?.webSearchQueries || [];
+    synthesisResult.search_queries = [...new Set(grounding?.webSearchQueries || [])];
     if (groundedFacts.length === 0) {
       synthesisResult.critical_unknowns = [
         'Google Search returned no claim-level grounding citations for this request.',

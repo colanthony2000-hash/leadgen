@@ -239,6 +239,7 @@ export interface ResearchJob {
       claim: string;
       source_name: string;
       source_url: string;
+      sources?: Array<{ source_name: string; source_url: string }>;
       confidence: ConfidenceLevel;
     }>;
     search_queries?: string[];
