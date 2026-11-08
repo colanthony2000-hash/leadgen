@@ -98,7 +98,7 @@ function MainApp() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen w-full min-w-0 overflow-x-clip bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Global Application Header */}
       <AppHeader
         currentView={currentView}
@@ -111,7 +111,7 @@ function MainApp() {
         onSignOut={signOut}
       />
 
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 min-w-0 flex overflow-hidden relative">
         {/* Navigation Sidebar */}
         <AppSidebar
           currentView={currentView}
@@ -124,7 +124,7 @@ function MainApp() {
         />
 
         {/* Dynamic Main Viewport with mobile padding */}
-        <main className="flex-1 overflow-y-auto bg-slate-950/80 pb-20 md:pb-0">
+        <main className="flex-1 min-w-0 w-full overflow-y-auto bg-slate-950/80 pb-20 md:pb-0">
           <Suspense fallback={<div className="p-8 text-sm text-slate-400">Loading workspace section…</div>}>
           {currentView === 'overview' && (
             <OverviewDashboard onNavigate={(view) => setCurrentView(view)} />

@@ -59,9 +59,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 sm:gap-6 px-3 sm:px-6 py-2.5 sm:py-3 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md">
+    <header className="sticky top-0 z-30 flex w-full min-w-0 flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-6 px-3 sm:px-6 py-2.5 sm:py-3 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md">
       {/* Zone 1: Mobile Menu Toggle & Brand & Workspace Switcher */}
-      <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
+      <div className="flex min-w-0 max-w-full items-center gap-2 sm:gap-4">
         {onToggleMobileSidebar && (
           <button
             onClick={onToggleMobileSidebar}
@@ -84,13 +84,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             alt="Jeneconk Official Logo"
             className="w-8 h-8 rounded-full object-contain bg-slate-900 border border-amber-500/30 p-0.5 shadow-sm group-hover:scale-105 transition-transform"
           />
-          <div className="flex flex-col">
+          <div className="flex min-w-0 flex-col">
             <div className="flex items-center gap-1">
               <span className="text-base font-bold tracking-tight text-white whitespace-nowrap group-hover:text-amber-300 transition-colors">
                 Jeneconk BII
               </span>
             </div>
-            <span className="text-[10px] font-medium text-slate-400 tracking-wider uppercase group-hover:text-slate-300 transition-colors">
+            <span className="hidden sm:block text-[10px] font-medium text-slate-400 tracking-wider uppercase group-hover:text-slate-300 transition-colors">
               www.jeneconk.com
             </span>
           </div>
@@ -102,10 +102,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         <div className="relative">
           <button
             onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-900 hover:bg-slate-800/80 border border-slate-800 rounded-lg transition-colors whitespace-nowrap"
+            className="flex max-w-[132px] sm:max-w-none items-center gap-2 px-2 sm:px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-900 hover:bg-slate-800/80 border border-slate-800 rounded-lg transition-colors whitespace-nowrap"
           >
             <Building2 className="w-3.5 h-3.5 text-amber-400" />
-            <span className="max-w-[180px] truncate">{activeTenant.name}</span>
+            <span className="max-w-[70px] sm:max-w-[180px] truncate">{activeTenant.name}</span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>
 
@@ -178,7 +178,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       </div>
 
       {/* Zone 3: Credits Meter, Actions & User Profile */}
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         {/* Quick Deep Research CTA */}
         <button
           onClick={onOpenResearch}
