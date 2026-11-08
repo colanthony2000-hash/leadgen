@@ -59,7 +59,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-30 flex w-full min-w-0 flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-6 px-3 sm:px-6 py-2.5 sm:py-3 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md">
+    <header className="sticky top-0 z-30 flex w-full min-w-0 flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2.5 sm:py-3 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md min-[1800px]:flex-nowrap min-[1800px]:gap-6">
       {/* Zone 1: Mobile Menu Toggle & Brand & Workspace Switcher */}
       <div className="flex min-w-0 max-w-full items-center gap-2 sm:gap-4">
         {onToggleMobileSidebar && (
@@ -146,9 +146,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       </div>
 
       {/* Zone 2: Sector Segmented Tabs & Search */}
-      <div className="hidden lg:flex items-center gap-3 flex-1 max-w-2xl justify-center">
+      <div className="hidden lg:flex order-3 basis-full w-full min-w-0 items-center justify-center gap-3 border-t border-slate-800/70 pt-2 min-[1800px]:order-none min-[1800px]:basis-auto min-[1800px]:w-auto min-[1800px]:flex-1 min-[1800px]:border-0 min-[1800px]:pt-0 min-[1800px]:max-w-2xl">
         {/* Industry Focus Filter */}
-        <div className="flex items-center p-1 bg-slate-900/90 border border-slate-800 rounded-lg">
+        <div className="flex min-w-0 items-center overflow-x-auto p-1 bg-slate-900/90 border border-slate-800 rounded-lg">
           {industries.map((ind) => (
             <button
               key={ind.id}
@@ -165,11 +165,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         {/* Global Search Bar */}
-        <div className="relative flex-1 max-w-xs">
+        <div className="relative w-full min-w-[220px] max-w-xs flex-1">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search companies, tenders, contacts..."
+            placeholder="Search this workspace..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900/80 border border-slate-800 rounded-lg text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
@@ -177,8 +177,32 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
       </div>
 
+      <div className="order-3 flex w-full min-w-0 items-center gap-2 border-t border-slate-800/70 pt-2 lg:hidden">
+        <select
+          aria-label="Filter workspace by sector"
+          value={activeIndustry}
+          onChange={(event) => setActiveIndustry(event.target.value as IndustryCode | 'all')}
+          className="w-[132px] shrink-0 rounded-lg border border-slate-800 bg-slate-900 px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+        >
+          {industries.map((industry) => (
+            <option key={industry.id} value={industry.id}>{industry.label}</option>
+          ))}
+        </select>
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            aria-label="Search this workspace"
+            placeholder="Search this workspace..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="w-full rounded-lg border border-slate-800 bg-slate-900/80 py-2 pl-9 pr-3 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
+          />
+        </div>
+      </div>
+
       {/* Zone 3: Credits Meter, Actions & User Profile */}
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+      <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:gap-3 min-[1800px]:order-none min-[1800px]:ml-0">
         {/* Quick Deep Research CTA */}
         <button
           onClick={onOpenResearch}

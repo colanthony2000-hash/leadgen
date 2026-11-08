@@ -24,6 +24,8 @@ interface OverviewDashboardProps {
 export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate }) => {
   const {
     activeTenant,
+    activeIndustry,
+    searchQuery,
     companies,
     crmLeads,
     procurementNotices,
@@ -35,11 +37,40 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
     toggleTaskStatus,
   } = useApp();
 
-  const savedCompanies = companies.filter((c) => c.is_saved);
-  const highFitCompanies = companies.filter((c) => c.fit_score >= 90);
-  const openTenders = procurementNotices.filter((n) => n.status === 'open');
-  const recentResearch = researchJobs.slice(0, 3);
-  const pendingTasks = tasks.filter((t) => t.status === 'pending');
+  const query = searchQuery.trim().toLocaleLowerCase();
+  const sectorCompanies = companies.filter((company) => {
+    if (activeIndustry !== 'all' && company.industry_id !== activeIndustry) return false;
+    if (!query) return true;
+    return [company.canonical_name, company.company_type, company.description, company.location.city, company.location.country]
+      .some((value) => value.toLocaleLowerCase().includes(query));
+  });
+  const sectorCompanyIds = new Set(sectorCompanies.map((company) => company.id));
+  const sectorLeads = activeIndustry === 'all'
+    ? crmLeads
+    : crmLeads.filter((lead) => sectorCompanyIds.has(lead.company_id));
+  const sectorLeadIds = new Set(sectorLeads.map((lead) => lead.id));
+  const sectorTasks = activeIndustry === 'all'
+    ? tasks
+    : tasks.filter((task) => sectorLeadIds.has(task.lead_id));
+  const sectorResearchJobs = activeIndustry === 'all'
+    ? researchJobs
+    : researchJobs.filter((job) => sectorCompanyIds.has(job.subject_id));
+  const sectorSavedCompanies = sectorCompanies.filter((company) => company.is_saved);
+  const highFitCompanies = sectorCompanies.filter((company) => company.fit_score >= 90);
+  const openTenders = procurementNotices.filter((notice) => {
+    if (notice.status !== 'open' || (activeIndustry !== 'all' && notice.industry_id !== activeIndustry)) return false;
+    if (!query) return true;
+    return [notice.title, notice.buyer_name, notice.notice_reference, notice.scope_summary]
+      .some((value) => value.toLocaleLowerCase().includes(query));
+  });
+  const recentResearch = sectorResearchJobs.slice(0, 3);
+  const pendingTasks = sectorTasks.filter((task) => task.status === 'pending');
+  const sectorLabel = {
+    all: 'All Sectors',
+    oil_and_gas: 'Oil & Gas / EPC',
+    education: 'Education & STEM',
+    digital_products: 'Digital Products',
+  }[activeIndustry];
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto">
@@ -78,7 +109,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
               Industrial Opportunity & Intelligence Overview
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
-              Real-time monitoring of energy infrastructure operators, educational networks, verified decision-makers, and NipeX tender notices.
+              Monitoring workspace intelligence for {sectorLabel.toLowerCase()}, including companies, verified decision-makers, and tender notices.
             </p>
           </div>
 
@@ -114,10 +145,10 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-white font-mono tabular-nums">
-              {companies.length}
+              {sectorCompanies.length}
             </span>
             <span className="text-xs text-emerald-400 font-medium">
-              +{savedCompanies.length} in Workspace
+              +{sectorSavedCompanies.length} in Workspace
             </span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
@@ -136,7 +167,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-white font-mono tabular-nums">
-              {crmLeads.length}
+              {sectorLeads.length}
             </span>
             <span className="text-xs text-amber-300 font-medium">
               $3.8M Est. Value
@@ -329,7 +360,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
             </div>
 
             <div className="space-y-2">
-              {tasks.slice(0, 4).map((task) => {
+              {sectorTasks.slice(0, 4).map((task) => {
                 const isCompleted = task.status === 'completed';
                 return (
                   <div

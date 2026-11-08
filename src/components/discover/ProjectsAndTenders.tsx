@@ -28,35 +28,21 @@ export const ProjectsAndTenders: React.FC<ProjectsAndTendersProps> = ({
   onOpenResearchForSubject,
   onOpenCompany,
 }) => {
-  const { projects, procurementNotices, activeIndustry, addCompanyToCrm, setIsIntakeModalOpen } = useApp();
+  const { projects, procurementNotices, activeIndustry, searchQuery, addCompanyToCrm, setIsIntakeModalOpen } = useApp();
   const [activeTab, setActiveTab] = useState<'tenders' | 'projects'>(initialTab);
   const [filterText, setFilterText] = useState('');
+  const queries = [filterText, searchQuery].map((query) => query.trim().toLocaleLowerCase()).filter(Boolean);
 
   const filteredProjects = projects.filter((p) => {
     if (activeIndustry !== 'all' && p.industry_id !== activeIndustry) return false;
-    if (filterText.trim()) {
-      const q = filterText.toLowerCase();
-      return (
-        p.canonical_title.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
-        p.location.toLowerCase().includes(q)
-      );
-    }
-    return true;
+    const searchable = [p.canonical_title, p.description, p.location].map((value) => value.toLocaleLowerCase());
+    return queries.every((query) => searchable.some((value) => value.includes(query)));
   });
 
   const filteredTenders = procurementNotices.filter((n) => {
     if (activeIndustry !== 'all' && n.industry_id !== activeIndustry) return false;
-    if (filterText.trim()) {
-      const q = filterText.toLowerCase();
-      return (
-        n.title.toLowerCase().includes(q) ||
-        n.buyer_name.toLowerCase().includes(q) ||
-        n.notice_reference.toLowerCase().includes(q) ||
-        n.scope_summary.toLowerCase().includes(q)
-      );
-    }
-    return true;
+    const searchable = [n.title, n.buyer_name, n.notice_reference, n.scope_summary].map((value) => value.toLocaleLowerCase());
+    return queries.every((query) => searchable.some((value) => value.includes(query)));
   });
 
   return (

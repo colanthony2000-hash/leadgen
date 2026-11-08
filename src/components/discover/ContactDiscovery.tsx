@@ -24,12 +24,14 @@ export const ContactDiscovery: React.FC<ContactDiscoveryProps> = ({
   onDraftOutreach,
   onOpenCompany,
 }) => {
-  const { contacts, activeIndustry, searchQuery, setSearchQuery } = useApp();
+  const { contacts, companies, activeIndustry, searchQuery, setSearchQuery } = useApp();
+  const companyIndustryById = new Map(companies.map((company) => [company.id, company.industry_id]));
 
   const [selectedRole, setSelectedRole] = useState<string>('all');
   const [selectedSeniority, setSelectedSeniority] = useState<string>('all');
 
   const filteredContacts = contacts.filter((c) => {
+    if (activeIndustry !== 'all' && companyIndustryById.get(c.company_id) !== activeIndustry) return false;
     // Role category
     if (selectedRole !== 'all' && c.role_category !== selectedRole) return false;
     // Seniority

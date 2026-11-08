@@ -38,13 +38,11 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
     addCompanyToCrm,
     activeIndustry,
     researchJobs,
+    searchQuery,
   } = useApp();
 
   const [subjectType, setSubjectType] = useState<'company' | 'contact' | 'opportunity' | 'market_topic'>(
     initialSubject?.type || 'company'
-  );
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
-    initialSubject?.id || (companies[0]?.id || '')
   );
   const [customSubjectName, setCustomSubjectName] = useState<string>(
     initialSubject?.name || ''
@@ -64,8 +62,26 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
   const [runStage, setRunStage] = useState<string>('');
   const [activeJobResult, setActiveJobResult] = useState<ResearchJob | null>(null);
 
-  const selectedCompany = companies.find((c) => c.id === selectedCompanyId);
-  const subjectName = subjectType === 'company' && selectedCompany ? selectedCompany.canonical_name : customSubjectName;
+  const normalizedSubjectName = customSubjectName.trim().toLocaleLowerCase();
+  const selectedCompany = subjectType === 'company'
+    ? companies.find((company) => company.canonical_name.trim().toLocaleLowerCase() === normalizedSubjectName)
+    : undefined;
+  const subjectName = customSubjectName.trim();
+  const sectorCompanies = companies.filter((company) => activeIndustry === 'all' || company.industry_id === activeIndustry);
+  const suggestedCompanies = sectorCompanies.filter((company) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.trim().toLocaleLowerCase();
+    return company.canonical_name.toLocaleLowerCase().includes(query)
+      || company.company_type.toLocaleLowerCase().includes(query)
+      || company.location.city.toLocaleLowerCase().includes(query)
+      || company.location.country.toLocaleLowerCase().includes(query);
+  });
+  const sectorLabel = {
+    all: 'All Sectors',
+    oil_and_gas: 'Oil & Gas / EPC',
+    education: 'Education & STEM',
+    digital_products: 'Digital Products',
+  }[activeIndustry];
 
   const promptTemplates = [
     {
@@ -128,6 +144,12 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
         </p>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2 text-xs text-slate-300">
+        <span className="font-semibold text-amber-300">Sector scope: {sectorLabel}</span>
+        <span className="text-slate-500">·</span>
+        <span>{suggestedCompanies.length} workspace suggestions. You can enter any company name.</span>
+      </div>
+
       {/* Research Configuration Console */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Form Parameters */}
@@ -137,7 +159,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
               1. Research Subject Category
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
                 { id: 'company', label: 'Company / Operator', icon: Building2 },
                 { id: 'opportunity', label: 'Tender / Project', icon: FileText },
@@ -148,7 +170,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
                   <button
                     key={t.id}
                     onClick={() => setSubjectType(t.id as any)}
-                    className={`flex items-center justify-center gap-2 py-2 px-3 text-xs font-medium rounded-lg border transition-all ${
+                    className={`flex min-w-0 items-center justify-center gap-2 py-2 px-3 text-xs font-medium rounded-lg border transition-all ${
                       subjectType === t.id
                         ? 'border-amber-400 bg-amber-400/10 text-amber-300 font-semibold'
                         : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-white'
@@ -168,17 +190,27 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               2. Target Subject
             </label>
             {subjectType === 'company' ? (
-              <select
-                value={selectedCompanyId}
-                onChange={(e) => setSelectedCompanyId(e.target.value)}
+              <>
+              <input
+                type="text"
+                list="research-company-suggestions"
+                value={customSubjectName}
+                onChange={(e) => setCustomSubjectName(e.target.value)}
+                placeholder="Type any company or operator name..."
+                aria-label="Research company or operator"
                 className="w-full px-3.5 py-2 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
-              >
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.canonical_name} ({c.company_type} — {c.location.city}, {c.location.country})
+              />
+              <datalist id="research-company-suggestions">
+                {suggestedCompanies.map((company) => (
+                  <option key={company.id} value={company.canonical_name}>
+                    {company.company_type} — {company.location.city}, {company.location.country}
                   </option>
                 ))}
-              </select>
+              </datalist>
+              <p className="mt-1.5 text-[11px] text-slate-500">
+                Suggestions come from workspace records and follow the sector filter. A new name can be researched too; live source search is not connected yet.
+              </p>
+              </>
             ) : (
               <input
                 type="text"
