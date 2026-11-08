@@ -210,12 +210,21 @@ export class Database {
 
   public updateBusinessProfile(tenantId: string, updates: Partial<BusinessProfile>): BusinessProfile {
     const current = this.getBusinessProfile(tenantId);
-    const updated = {
+    const updated: BusinessProfile = {
       ...current,
       ...updates,
       version: current.version + 1,
       updated_at: new Date().toISOString(),
     };
+    if (updated.company_profiles?.length) {
+      const { company_profiles: _profiles, company_research_records: _researchRecords, scoring_weights: _weights, version: _version, tenant_id: _tenantId, ...activeRecord } = updated;
+      const activeIndex = updated.company_profiles.findIndex((profile) => profile.id === updated.id);
+      if (activeIndex >= 0) {
+        updated.company_profiles = updated.company_profiles.map((profile, index) => index === activeIndex
+          ? { ...profile, ...activeRecord, id: updated.id, updated_at: updated.updated_at }
+          : profile);
+      }
+    }
     this.data.business_profiles[tenantId] = updated;
     this.save();
     return updated;

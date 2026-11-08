@@ -91,6 +91,34 @@ export interface BusinessProfileResearchDraft {
   sources: ResearchSource[];
 }
 
+export interface CompanyProfile {
+  id: string;
+  company_name: string;
+  website: string;
+  country_code: string;
+  business_summary: string;
+  target_regions: string[];
+  target_industries: IndustryCode[];
+  offerings: BusinessOffering[];
+  certifications: BusinessCertification[];
+  profile_sources: ResearchSource[];
+  profile_approved_at: string;
+  approved_prospects: BusinessProspectMatch[];
+  updated_at: string;
+}
+
+export interface CompanySearchInput {
+  company_name?: string;
+  category?: string;
+  location?: string;
+}
+
+export interface CompanyResearchRecord extends BusinessProfileResearchDraft {
+  id: string;
+  researched_name: string;
+  researched_at: string;
+}
+
 export interface ScoringWeights {
   service_compatibility: number;     // e.g. 25
   project_relevance: number;         // e.g. 25
@@ -114,6 +142,8 @@ export interface BusinessProfile {
   profile_sources?: ResearchSource[];
   profile_approved_at?: string;
   approved_prospects?: BusinessProspectMatch[];
+  company_profiles?: CompanyProfile[];
+  company_research_records?: CompanyResearchRecord[];
   scoring_weights: ScoringWeights;
   version: number;
   updated_at: string;

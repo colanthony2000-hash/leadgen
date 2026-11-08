@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Award, Check, ExternalLink, Loader2, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
-import { BusinessProfileResearchDraft, BusinessProspectMatch, IndustryCode } from '../../types';
+import { BusinessProfileResearchDraft, BusinessProspectMatch, CompanyProfile, CompanyResearchRecord, IndustryCode } from '../../types';
 
 const emptyDraft = (profile: ReturnType<typeof useApp>['businessProfile']): BusinessProfileResearchDraft => ({
   company_name: profile.company_name, website: profile.website, country_code: profile.country_code,
@@ -23,7 +23,13 @@ export const BusinessProfileView: React.FC = () => {
   const [context, setContext] = useState('');
   const [draft, setDraft] = useState<BusinessProfileResearchDraft | null>(null);
   const [matches, setMatches] = useState<BusinessProspectMatch[]>([]);
-  const [busy, setBusy] = useState<'research' | 'save' | 'prospects' | ''>('');
+  const [companySearchName, setCompanySearchName] = useState('');
+  const [companySearchCategory, setCompanySearchCategory] = useState('');
+  const [companySearchLocation, setCompanySearchLocation] = useState('');
+  const [companyResults, setCompanyResults] = useState<BusinessProspectMatch[]>([]);
+  const [externalResearch, setExternalResearch] = useState<(BusinessProfileResearchDraft & { researched_name: string }) | null>(null);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(businessProfile.id);
+  const [busy, setBusy] = useState<'research' | 'save' | 'prospects' | 'companySearch' | 'companyResearch' | ''>('');
   const [message, setMessage] = useState('');
 
   const updateDraft = (updates: Partial<BusinessProfileResearchDraft>) => setDraft((previous) => previous ? { ...previous, ...updates } : previous);
@@ -42,14 +48,33 @@ export const BusinessProfileView: React.FC = () => {
     if (!draft) return;
     setBusy('save'); setMessage('');
     try {
+      const profiles = businessProfile.company_profiles?.length
+        ? [...businessProfile.company_profiles]
+        : [{
+            id: businessProfile.id, company_name: businessProfile.company_name, website: businessProfile.website, country_code: businessProfile.country_code,
+            business_summary: businessProfile.business_summary, target_regions: businessProfile.target_regions, target_industries: businessProfile.target_industries,
+            offerings: businessProfile.offerings, certifications: businessProfile.certifications, profile_sources: businessProfile.profile_sources || [],
+            profile_approved_at: businessProfile.profile_approved_at || '', approved_prospects: businessProfile.approved_prospects || [], updated_at: businessProfile.updated_at,
+          }];
+      const profileId = editingProfileId || `bp-${Date.now()}`;
+      const approvedAt = new Date().toISOString();
+      const savedCompany: CompanyProfile = {
+        id: profileId, company_name: draft.company_name, website: draft.website, country_code: draft.country_code,
+        business_summary: draft.business_summary, target_regions: draft.target_regions, target_industries: draft.target_industries,
+        offerings: draft.offerings, certifications: draft.certifications, profile_sources: draft.sources, profile_approved_at: approvedAt,
+        approved_prospects: profiles.find((item) => item.id === profileId)?.approved_prospects || [], updated_at: approvedAt,
+      };
+      const nextProfiles = [savedCompany, ...profiles.filter((item) => item.id !== profileId)];
       await updateBusinessProfile({
+        id: profileId,
         company_name: draft.company_name, website: draft.website, country_code: draft.country_code,
         business_summary: draft.business_summary, target_regions: draft.target_regions,
         target_industries: draft.target_industries, offerings: draft.offerings,
         certifications: draft.certifications, profile_sources: draft.sources,
-        profile_approved_at: new Date().toISOString(),
+        profile_approved_at: approvedAt, company_profiles: nextProfiles,
+        approved_prospects: savedCompany.approved_prospects,
       });
-      setDraft(null); setMessage('Profile reviewed and saved. You can now search for potential customer companies.');
+      setEditingProfileId(profileId); setDraft(null); setMessage(`${draft.company_name} profile reviewed and saved. You can now search for potential customer companies.`);
     } catch (error: any) { setMessage(error.message || 'Could not save the approved profile.'); }
     finally { setBusy(''); }
   };
@@ -61,6 +86,52 @@ export const BusinessProfileView: React.FC = () => {
       setMatches(await api.findBusinessProspects());
     } catch (error: any) { setMessage(error.message || 'Prospect search failed.'); }
     finally { setBusy(''); }
+  };
+
+  const searchAnyCompany = async (event: React.FormEvent) => {
+    event.preventDefault(); setBusy('companySearch'); setMessage(''); setCompanyResults([]); setExternalResearch(null);
+    try {
+      setCompanyResults(await api.searchCompanies({ company_name: companySearchName, category: companySearchCategory, location: companySearchLocation }));
+    } catch (error: any) { setMessage(error.message || 'Company search failed.'); }
+    finally { setBusy(''); }
+  };
+
+  const researchCompany = async (company: BusinessProspectMatch) => {
+    setBusy('companyResearch'); setMessage('');
+    try {
+      const normalizedWebsite = company.website ? (/^https?:\/\//i.test(company.website) ? company.website : `https://${company.website}`) : undefined;
+      const result = await api.researchBusinessProfile({ website: normalizedWebsite, company_name: company.company_name, context: `Research request from company search. Category: ${companySearchCategory || 'not specified'}. Location: ${company.location || companySearchLocation || 'not specified'}. Search result summary: ${company.description}` });
+      setExternalResearch({ ...result, researched_name: company.company_name });
+      setMessage(`Research draft for ${company.company_name} is ready. Review the source links below.`);
+    } catch (error: any) { setMessage(error.message || 'Company research failed.'); }
+    finally { setBusy(''); }
+  };
+
+  const saveResearchRecord = async () => {
+    if (!externalResearch) return;
+    const record: CompanyResearchRecord = { ...externalResearch, id: `research-${Date.now()}`, researched_at: new Date().toISOString() };
+    try {
+      await updateBusinessProfile({ company_research_records: [record, ...(businessProfile.company_research_records || [])] });
+      setExternalResearch(null); setMessage(`${record.researched_name} saved to the company research library.`);
+    } catch (error: any) { setMessage(error.message || 'Could not save research.'); }
+  };
+
+  const savedProfiles: CompanyProfile[] = businessProfile.company_profiles?.length ? businessProfile.company_profiles : [{
+    id: businessProfile.id, company_name: businessProfile.company_name, website: businessProfile.website, country_code: businessProfile.country_code,
+    business_summary: businessProfile.business_summary, target_regions: businessProfile.target_regions, target_industries: businessProfile.target_industries,
+    offerings: businessProfile.offerings, certifications: businessProfile.certifications, profile_sources: businessProfile.profile_sources || [],
+    profile_approved_at: businessProfile.profile_approved_at || '', approved_prospects: businessProfile.approved_prospects || [], updated_at: businessProfile.updated_at,
+  }];
+
+  const activateProfile = async (profile: CompanyProfile) => {
+    try {
+      await updateBusinessProfile({ id: profile.id, company_name: profile.company_name, website: profile.website, country_code: profile.country_code,
+        business_summary: profile.business_summary, target_regions: profile.target_regions, target_industries: profile.target_industries,
+        offerings: profile.offerings, certifications: profile.certifications, profile_sources: profile.profile_sources,
+        profile_approved_at: profile.profile_approved_at, approved_prospects: profile.approved_prospects });
+      setCompanyName(profile.company_name); setWebsite(profile.website); setEditingProfileId(profile.id); setMatches([]); setDraft(null);
+      setMessage(`${profile.company_name} is now the active company profile for matching.`);
+    } catch (error: any) { setMessage(error.message || 'Could not switch active profile.'); }
   };
 
   const approveMatch = async (match: BusinessProspectMatch) => {
@@ -81,6 +152,12 @@ export const BusinessProfileView: React.FC = () => {
       <h1 className="mt-1 text-2xl font-bold text-white">Build your company profile, then find potential buyers</h1>
       <p className="mt-2 max-w-3xl text-sm text-slate-400">Start with a website or company name. AI uses Google Search to draft your services, markets, and public details. A person reviews and approves the profile before prospect search is enabled.</p>
     </header>
+
+    <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">Your company profiles ({savedProfiles.length})</h2><p className="mt-1 text-xs text-slate-400">Create a separate profile for each business line, brand, or service subdomain. Matching uses the active approved profile.</p></div>
+        <button type="button" onClick={() => { setEditingProfileId(null); setCompanyName(''); setWebsite(''); setContext(''); setDraft(null); setMessage('Enter a website or name to start a new company profile.'); }} className="min-h-10 rounded-lg border border-amber-400/40 px-3 py-2 text-sm font-medium text-amber-200">+ Create company profile</button></div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{savedProfiles.map((profile) => <button type="button" key={profile.id} onClick={() => activateProfile(profile)} className={`min-w-0 rounded-xl border p-4 text-left ${businessProfile.id === profile.id ? 'border-amber-400/60 bg-amber-400/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'}`}><span className="block truncate font-semibold text-white">{profile.company_name || 'Untitled company'}</span><span className="mt-1 block truncate text-xs text-slate-400">{profile.website || 'No website'} · {profile.offerings.length} offerings</span><span className="mt-2 inline-block rounded-full bg-slate-800 px-2 py-1 text-[10px] text-slate-300">{profile.profile_approved_at ? 'Approved' : 'Needs review'}</span></button>)}</div>
+    </section>
 
     <form onSubmit={runResearch} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
       <h2 className="font-semibold text-white">1. Find your public company details</h2>
@@ -122,6 +199,20 @@ export const BusinessProfileView: React.FC = () => {
       <div><h3 className="mb-2 text-sm font-medium text-white">Sources found</h3>{draft.sources.length ? <ul className="space-y-1.5 text-xs">{draft.sources.map((source) => <li key={source.url}><a className="inline-flex items-center gap-1 text-sky-300 hover:underline" href={source.url} target="_blank" rel="noreferrer">{source.title}<ExternalLink className="h-3 w-3" /></a></li>)}</ul> : <p className="text-xs text-slate-500">No web citations available in this preview.</p>}</div>
       <button type="button" onClick={approveProfile} disabled={!!busy || !draft.company_name.trim() || !draft.offerings.some((item) => item.name.trim())} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-50"><Check className="h-4 w-4" />{busy === 'save' ? 'Saving…' : 'Approve and save company profile'}</button>
     </section>}
+
+    <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
+      <div><h2 className="font-semibold text-white">Search and research any company</h2><p className="mt-1 text-xs text-slate-400">Search by company name, service category, or location. Results include web sources; research a result to build a fuller company record.</p></div>
+      <form onSubmit={searchAnyCompany} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <input className={fieldClass} placeholder="Company name" value={companySearchName} onChange={(e) => setCompanySearchName(e.target.value)} />
+        <input className={fieldClass} placeholder="Category or service" value={companySearchCategory} onChange={(e) => setCompanySearchCategory(e.target.value)} />
+        <input className={fieldClass} placeholder="City, state, or country" value={companySearchLocation} onChange={(e) => setCompanySearchLocation(e.target.value)} />
+        <button disabled={!!busy || (!companySearchName.trim() && !companySearchCategory.trim() && !companySearchLocation.trim())} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy === 'companySearch' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Search companies</button>
+      </form>
+      {companyResults.map((company) => <article key={company.id} className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/70 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-semibold text-white">{company.company_name}</h3><p className="text-xs text-slate-400">{company.company_type} · {company.location}{company.website ? ` · ${company.website}` : ''}</p></div><button type="button" disabled={!!busy} onClick={() => researchCompany(company)} className="rounded-lg border border-sky-400/30 px-3 py-2 text-xs font-semibold text-sky-200 disabled:opacity-50">{busy === 'companyResearch' ? 'Researching…' : 'Research company'}</button></div><p className="text-sm text-slate-300">{company.description}</p><p className="text-xs text-slate-400">{company.match_reason}</p><div className="flex flex-wrap gap-2">{company.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">{source.title}<ExternalLink className="h-3 w-3" /></a>)}</div></article>)}
+      {externalResearch && <article className="space-y-3 rounded-xl border border-sky-400/30 bg-slate-950/70 p-4"><div><h3 className="font-semibold text-white">Research draft: {externalResearch.company_name || externalResearch.researched_name}</h3><p className="mt-1 text-sm text-slate-300">{externalResearch.business_summary || 'No summary found.'}</p></div><div><h4 className="mb-1 text-xs font-semibold uppercase text-slate-400">Services and offerings</h4><ul className="list-inside list-disc space-y-1 text-sm text-slate-300">{externalResearch.offerings.map((item) => <li key={item.id}><strong>{item.name}</strong>{item.description ? ` — ${item.description}` : ''}</li>)}</ul></div><div><h4 className="mb-1 text-xs font-semibold uppercase text-slate-400">Cited sources</h4><div className="flex flex-wrap gap-2">{externalResearch.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">{source.title}<ExternalLink className="h-3 w-3" /></a>)}</div></div><button type="button" onClick={saveResearchRecord} className="min-h-10 rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950">Save to research library</button></article>}
+      {(businessProfile.company_research_records || []).length > 0 && <div className="space-y-2"><h3 className="text-sm font-semibold text-white">Company research library ({businessProfile.company_research_records?.length})</h3>{businessProfile.company_research_records?.map((record) => <details key={record.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"><summary className="cursor-pointer font-medium text-white">{record.company_name} <span className="text-xs font-normal text-slate-400">· researched {new Date(record.researched_at).toLocaleDateString()}</span></summary><p className="mt-3 text-sm text-slate-300">{record.business_summary}</p><ul className="mt-2 list-inside list-disc text-xs text-slate-400">{record.offerings.map((item) => <li key={item.id}>{item.name}</li>)}</ul><div className="mt-2 flex flex-wrap gap-2">{record.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="text-xs text-sky-300 hover:underline">{source.title}</a>)}</div></details>)}</div>}
+      {isDemoMode && <p className="text-xs text-slate-500">Live company search and research need a signed-in workspace with the server Gemini key configured.</p>}
+    </section>
 
     {businessProfile.profile_approved_at && <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">3. Find organizations that could use your offerings</h2><p className="mt-1 text-xs text-slate-400">Search results are potential fits. Review evidence and approve the prospects worth keeping.</p></div>

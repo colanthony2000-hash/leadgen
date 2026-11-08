@@ -4,6 +4,7 @@ import {
   BusinessProfile,
   BusinessProfileResearchDraft,
   BusinessProspectMatch,
+  CompanySearchInput,
   Company,
   Contact,
   Project,
@@ -88,6 +89,10 @@ export class ApiClient {
 
   async findBusinessProspects(): Promise<BusinessProspectMatch[]> {
     return this.request('/api/profile/prospects', { method: 'POST' });
+  }
+
+  async searchCompanies(input: CompanySearchInput): Promise<BusinessProspectMatch[]> {
+    return this.request('/api/company-search', { method: 'POST', body: JSON.stringify(input) });
   }
 
   async updateScoringWeights(scoring_weights: ScoringWeights): Promise<BusinessProfile> {

@@ -1,6 +1,6 @@
 import { db, AsyncBackgroundJob } from './db';
 import { GoogleGenAI } from '@google/genai';
-import { ResearchJob, CreditTransaction, BusinessProfileResearchDraft, BusinessProspectMatch, BusinessProfile, IndustryCode } from '../src/types';
+import { ResearchJob, CreditTransaction, BusinessProfileResearchDraft, BusinessProspectMatch, BusinessProfile, IndustryCode, CompanySearchInput } from '../src/types';
 
 const GEMINI_RESEARCH_MODEL = 'gemini-3.8-flash';
 
@@ -86,6 +86,25 @@ Recommend potential buyers, operators, institutions, or organizations based on e
       id: `prospect-${Date.now()}-${index}`, company_name: String(item.company_name).slice(0, 200), website: String(item.website || '').slice(0, 300),
       industry_id: allowedIndustries.includes(item.industry_id) ? item.industry_id : 'digital_products', company_type: String(item.company_type || 'Organization').slice(0, 100),
       location: String(item.location || 'Not established').slice(0, 160), description: String(item.description || '').slice(0, 1000),
+      match_reason: String(item.match_reason || '').slice(0, 1000), matched_offerings: Array.isArray(item.matched_offerings) ? item.matched_offerings.filter((value: unknown) => typeof value === 'string').slice(0, 10) : [],
+      sources: item.source_urls.filter((url: unknown) => typeof url === 'string' && groundedSources.has(url)).map((url: string) => groundedSources.get(url)!), discovered_at: new Date().toISOString(),
+    }));
+  }
+
+  public async searchCompanies(input: CompanySearchInput): Promise<BusinessProspectMatch[]> {
+    const name = String(input.company_name || '').trim();
+    const category = String(input.category || '').trim();
+    const location = String(input.location || '').trim();
+    if (!name && !category && !location) throw new Error('Enter a company name, category, or location to search.');
+    const { data, sources } = await this.groundedJson(`Find up to 10 real companies matching this public company search. Search criteria: company name or name terms: ${name || 'any'}; category or services: ${category || 'any'}; location: ${location || 'any'}.
+Use Google Search for current public sources. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products","company_type":"","location":"","description":"short factual description","match_reason":"why it matches the requested name, category, or location","matched_offerings":["publicly described services or products"],"source_urls":["URL returned by Google Search"]}]}. source_urls must be copied exactly from Google Search results and support that company; omit any candidate without a supporting source URL. Do not invent URLs, contacts, or facts. If criteria are narrow, return fewer results rather than weak matches.`);
+    if (!Array.isArray(data.prospects)) throw new Error('Company search returned an invalid response.');
+    const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products'];
+    const groundedSources = new Map(sources.map((source) => [source.url, source]));
+    return data.prospects.slice(0, 10).filter((item: any) => item.company_name && Array.isArray(item.source_urls) && item.source_urls.some((url: unknown) => typeof url === 'string' && groundedSources.has(url))).map((item: any, index: number) => ({
+      id: `company-search-${Date.now()}-${index}`, company_name: String(item.company_name).slice(0, 200), website: String(item.website || '').slice(0, 300),
+      industry_id: allowedIndustries.includes(item.industry_id) ? item.industry_id : 'digital_products', company_type: String(item.company_type || 'Company').slice(0, 100),
+      location: String(item.location || location || 'Not established').slice(0, 160), description: String(item.description || '').slice(0, 1000),
       match_reason: String(item.match_reason || '').slice(0, 1000), matched_offerings: Array.isArray(item.matched_offerings) ? item.matched_offerings.filter((value: unknown) => typeof value === 'string').slice(0, 10) : [],
       sources: item.source_urls.filter((url: unknown) => typeof url === 'string' && groundedSources.has(url)).map((url: string) => groundedSources.get(url)!), discovered_at: new Date().toISOString(),
     }));

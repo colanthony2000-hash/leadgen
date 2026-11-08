@@ -208,6 +208,19 @@ app.post('/api/profile/prospects', requireRoles('owner', 'admin'), async (req: R
   }
 });
 
+app.post('/api/company-search', requireRoles('owner', 'admin', 'manager', 'member'), async (req: Request, res: Response) => {
+  try {
+    const results = await worker.searchCompanies({
+      company_name: typeof req.body?.company_name === 'string' ? req.body.company_name : undefined,
+      category: typeof req.body?.category === 'string' ? req.body.category : undefined,
+      location: typeof req.body?.location === 'string' ? req.body.location : undefined,
+    });
+    res.json(results);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Company search failed.' });
+  }
+});
+
 app.put('/api/profile/scoring', requireRoles('owner', 'admin', 'manager'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { scoring_weights } = req.body;
