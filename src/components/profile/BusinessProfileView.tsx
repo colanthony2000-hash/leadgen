@@ -3,6 +3,7 @@ import { Award, Check, ExternalLink, Loader2, Search, Sparkles, Trash2 } from 'l
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
 import { BusinessProfileResearchDraft, BusinessProspectMatch, CompanyProfile, CompanyResearchRecord, IndustryCode } from '../../types';
+import { DIGITAL_PRODUCT_CATEGORIES } from '../../data/digitalProductCategories';
 
 const emptyDraft = (profile: ReturnType<typeof useApp>['businessProfile']): BusinessProfileResearchDraft => ({
   company_name: profile.company_name, website: profile.website, service_websites: profile.service_websites || [], country_code: profile.country_code,
@@ -194,9 +195,10 @@ export const BusinessProfileView: React.FC = () => {
       <label className="block space-y-1.5 text-xs text-slate-300">Included service subdomains or websites<textarea className={fieldClass} rows={3} value={draft.service_websites.join('\n')} onChange={(e) => updateDraft({ service_websites: e.target.value.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean) })} /></label>
       <label className="block space-y-1.5 text-xs text-slate-300">What the company does<textarea className={fieldClass} rows={4} value={draft.business_summary} onChange={(e) => updateDraft({ business_summary: e.target.value })} /></label>
       <div className="space-y-2"><h3 className="text-sm font-medium text-white">Services, products, and capabilities ({draft.offerings.length})</h3>
-        {draft.offerings.map((offering, index) => <div key={offering.id} className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:grid-cols-[1fr_2fr_auto]">
+        {draft.offerings.map((offering, index) => <div key={offering.id} className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:grid-cols-[1fr_2fr_1.3fr_auto]">
           <input aria-label="Offering name" className={fieldClass} value={offering.name} onChange={(e) => updateDraft({ offerings: draft.offerings.map((item, i) => i === index ? { ...item, name: e.target.value } : item) })} />
           <input aria-label="Offering description" className={fieldClass} value={offering.description} onChange={(e) => updateDraft({ offerings: draft.offerings.map((item, i) => i === index ? { ...item, description: e.target.value } : item) })} />
+          <select aria-label="Digital product category" className={fieldClass} value={offering.category_code || 'general'} onChange={(e) => updateDraft({ offerings: draft.offerings.map((item, i) => i === index ? { ...item, category_code: e.target.value } : item) })}><option value="general">Other / general category</option>{DIGITAL_PRODUCT_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select>
           <button type="button" title="Remove offering" onClick={() => updateDraft({ offerings: draft.offerings.filter((_, i) => i !== index) })} className="rounded-lg p-2 text-slate-400 hover:bg-rose-500/10 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
         </div>)}
         <button type="button" onClick={() => updateDraft({ offerings: [...draft.offerings, { id: `off-manual-${Date.now()}`, offering_type: 'service', name: '', description: '', category_code: 'general', target_industry: 'digital_products' }] })} className="text-xs font-medium text-amber-300">+ Add an offering</button>
@@ -212,7 +214,8 @@ export const BusinessProfileView: React.FC = () => {
       <div><h2 className="font-semibold text-white">Search and research any company</h2><p className="mt-1 text-xs text-slate-400">Search by company name, service category, or location. Results include web sources; research a result to build a fuller company record.</p></div>
       <form onSubmit={searchAnyCompany} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <input className={fieldClass} placeholder="Company name" value={companySearchName} onChange={(e) => setCompanySearchName(e.target.value)} />
-        <input className={fieldClass} placeholder="Category or service" value={companySearchCategory} onChange={(e) => setCompanySearchCategory(e.target.value)} />
+        <input list="digital-product-categories" className={fieldClass} placeholder="Category or service" value={companySearchCategory} onChange={(e) => setCompanySearchCategory(e.target.value)} />
+        <datalist id="digital-product-categories">{DIGITAL_PRODUCT_CATEGORIES.map((category) => <option key={category.id} value={category.label} />)}</datalist>
         <input className={fieldClass} placeholder="City, state, or country" value={companySearchLocation} onChange={(e) => setCompanySearchLocation(e.target.value)} />
         <button disabled={!!busy || (!companySearchName.trim() && !companySearchCategory.trim() && !companySearchLocation.trim())} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy === 'companySearch' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Search companies</button>
       </form>
