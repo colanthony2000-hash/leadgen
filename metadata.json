@@ -1,0 +1,6 @@
+{
+  "name": "Jeneconk BII — Business & Industrial Intelligence",
+  "description": "Enterprise SaaS platform for company discovery, contact intelligence, projects & procurement signals, evidence-backed AI research, lead qualification, and CRM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
