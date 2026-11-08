@@ -2,6 +2,8 @@ import { db, AsyncBackgroundJob } from './db';
 import { GoogleGenAI } from '@google/genai';
 import { ResearchJob, CreditTransaction } from '../src/types';
 
+const GEMINI_RESEARCH_MODEL = 'gemini-3.8-flash';
+
 export class BackgroundJobWorker {
   private aiClient: GoogleGenAI | null = null;
 
@@ -84,7 +86,7 @@ Use Google Search to find current public information. Prioritize the subject's o
 Return a concise factual briefing. Separate confirmed information from gaps. Do not guess or create facts, people, tenders, dates, or URLs. The API will provide source citations separately; do not fabricate citations.`;
 
     const searchResponse = await this.aiClient.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_RESEARCH_MODEL,
       contents: searchPrompt,
       config: { tools: [{ googleSearch: {} }] },
     });
@@ -143,7 +145,7 @@ Return JSON with this shape:
 Return valid JSON only.`;
 
     const synthesisResponse = await this.aiClient.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_RESEARCH_MODEL,
       contents: synthesisPrompt,
       config: { responseMimeType: 'application/json' },
     });

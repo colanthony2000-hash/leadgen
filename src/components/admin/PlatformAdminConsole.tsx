@@ -27,7 +27,7 @@ export const PlatformAdminConsole: React.FC = () => {
     { name: 'NipeX JQS Tender Scraper', latencyMs: 240, uptime: '99.9%', status: 'healthy' },
     { name: 'Apollo Commercial Adapter', latencyMs: 180, uptime: '99.8%', status: 'healthy' },
     { name: 'CAC Public Registry Connector', latencyMs: 310, uptime: '99.5%', status: 'healthy' },
-    { name: 'Google GenAI (gemini-2.5-flash)', latencyMs: 420, uptime: '100%', status: 'healthy' },
+    { name: 'Google GenAI (gemini-3.8-flash)', latencyMs: 420, uptime: '100%', status: 'healthy' },
   ];
 
   return (
