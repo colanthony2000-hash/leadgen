@@ -412,7 +412,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400" />
-              Latest Evidence-Backed Research Dossiers
+              Latest Google Search Grounded Research
             </h3>
             <p className="text-xs text-slate-400">
               Each research run extracts traceable facts, flags unknowns, and analyzes procurement fit against your business profile.
@@ -447,7 +447,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
               </p>
 
               <div className="pt-2 border-t border-slate-900 flex items-center justify-between text-[11px] text-slate-400">
-                <span>{job.result?.known_facts.length} verified facts cited</span>
+                <span>{job.result?.known_facts.length} source-backed claims</span>
                 <span className="text-amber-400 font-medium">
                   {job.result?.critical_unknowns.length} unknowns flagged
                 </span>

@@ -75,62 +75,106 @@ export class BackgroundJobWorker {
 
     db.updateBackgroundJob(job.id, { progress_pct: 35 });
 
-    const prompt = `You are preparing a preliminary commercial-fit analysis for Jeneconk BII.
+    const searchPrompt = `Research ${subject_type || 'company'}: ${subject_name}
+Industry: ${industry || 'General Industry'}
+Research focus: ${question || 'Assess possible commercial fit'}
+Requested source categories: ${JSON.stringify(job.payload.sources || [])}
+
+Use Google Search to find current public information. Prioritize the subject's official website, government or regulator pages, official procurement notices, and primary company disclosures. Search for the exact subject name and relevant local context.
+Return a concise factual briefing. Separate confirmed information from gaps. Do not guess or create facts, people, tenders, dates, or URLs. The API will provide source citations separately; do not fabricate citations.`;
+
+    const searchResponse = await this.aiClient.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: searchPrompt,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+
+    if (!searchResponse.text) {
+      throw new Error('Google Search research returned an empty response.');
+    }
+
+    const grounding = searchResponse.candidates?.[0]?.groundingMetadata;
+    const groundingChunks = grounding?.groundingChunks || [];
+    const groundedFacts = (grounding?.groundingSupports || []).flatMap((support) => {
+      const claim = support.segment?.text?.trim();
+      if (!claim) return [];
+      return (support.groundingChunkIndices || []).flatMap((chunkIndex) => {
+        const webSource = groundingChunks[chunkIndex]?.web;
+        if (!webSource?.uri) return [];
+        return [{
+          claim,
+          source_name: webSource.title || webSource.uri,
+          source_url: webSource.uri,
+          confidence: 'medium' as const,
+        }];
+      });
+    }).filter((fact, index, facts) =>
+      facts.findIndex((candidate) => candidate.claim === fact.claim && candidate.source_url === fact.source_url) === index
+    );
+
+    db.updateBackgroundJob(job.id, { progress_pct: 60 });
+
+    const synthesisPrompt = `You are preparing a preliminary commercial-fit analysis for Jeneconk BII.
 
 Subject: ${subject_name} (${subject_type || 'company'})
 Industry Sector: ${industry || 'General Industry'}
 Research Focus: ${question || 'Assess possible fit with the supplied offerings'}
 Business Offerings: ${JSON.stringify(offerings || [])}
-Requested source types (not retrieved or supplied as documents): ${JSON.stringify(job.payload.sources || [])}
+Google Search briefing: ${searchResponse.text}
+Claims with Google Search grounding citations: ${JSON.stringify(groundedFacts)}
 
-Important evidence limits:
-- You have not been given retrieved webpages, source excerpts, registry records, or live web search results.
-- Do not claim current company facts, active tenders, budgets, project dates, named decision-makers, registrations, certifications, or operational events.
-- Return an empty array for procurement_signals and known_facts. Do not invent citations or label anything verified.
-- Use role functions rather than real people in key_decision_makers, and label them as suggested roles to investigate.
-- Keep strategic_fit_analysis explicitly conditional on the supplied offerings and state that fit is not evidence of a current need.
-- Include the lack of source retrieval in critical_unknowns.
-- Do not make claims about Jeneconk credentials unless they appear in the supplied offerings.
+Evidence rules:
+- Use only the supplied search briefing for current facts. Do not add claims about tenders, budgets, dates, projects, registrations, certifications, or people unless the claim appears in the cited claims above.
+- Do not invent or rewrite source URLs. The application will attach the citation metadata returned by Google Search.
+- Use role functions, not real people's names, in key_decision_makers; label these as roles to investigate.
+- Keep strategic_fit_analysis conditional on the supplied offerings. A fit assessment is not evidence of a current need.
+- If the cited claims are empty, say that no source-supported current facts were returned and keep the summary cautious.
+- Do not make claims about Jenecon credentials unless they appear in the supplied offerings.
 
 Return JSON with this shape:
 {
-  "executive_summary": "Brief preliminary analysis, explicitly stating this is not source-verified",
-  "strategic_fit_analysis": "Conditional fit assessment based only on the supplied offerings",
-  "procurement_signals": [],
+  "executive_summary": "Concise summary constrained to the supplied search briefing and cited claims",
+  "strategic_fit_analysis": "Conditional fit assessment based only on the supplied offerings and search evidence",
   "key_decision_makers": [{ "name": "Role to identify", "title": "Suggested role", "relevance": "Why this role may be relevant; verify for the target" }],
-  "known_facts": [],
-  "critical_unknowns": ["Current operations and procurement activity have not been verified from source documents."],
+  "critical_unknowns": ["Important points that the search did not establish"],
   "recommended_outreach_angle": "A cautious discovery question, not a claim about the target"
 }
 
 Return valid JSON only.`;
 
-    const response = await this.aiClient.models.generateContent({
+    const synthesisResponse = await this.aiClient.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: prompt,
+      contents: synthesisPrompt,
       config: { responseMimeType: 'application/json' },
     });
 
-    if (!response.text) {
-      throw new Error('AI research returned an empty response.');
+    if (!synthesisResponse.text) {
+      throw new Error('AI research synthesis returned an empty response.');
     }
 
-    const synthesisResult = JSON.parse(response.text);
+    const synthesisResult = JSON.parse(synthesisResponse.text);
     if (
       typeof synthesisResult.executive_summary !== 'string' ||
       typeof synthesisResult.strategic_fit_analysis !== 'string' ||
-      !Array.isArray(synthesisResult.procurement_signals) ||
       !Array.isArray(synthesisResult.key_decision_makers) ||
-      !Array.isArray(synthesisResult.known_facts) ||
       !Array.isArray(synthesisResult.critical_unknowns) ||
       typeof synthesisResult.recommended_outreach_angle !== 'string'
     ) {
       throw new Error('AI research returned an invalid response structure.');
     }
 
-    // No source retrieval is implemented yet, so never expose model-written source claims.
-    synthesisResult.known_facts = [];
-    synthesisResult.procurement_signals = [];
+    const procurementKeywords = /tender|procurement|contract|rfp|bid|supplier|vendor|award|budget/i;
+    synthesisResult.known_facts = groundedFacts;
+    synthesisResult.procurement_signals = groundedFacts
+      .filter((fact) => procurementKeywords.test(fact.claim))
+      .map((fact) => fact.claim);
+    synthesisResult.search_queries = grounding?.webSearchQueries || [];
+    if (groundedFacts.length === 0) {
+      synthesisResult.critical_unknowns = [
+        'Google Search returned no claim-level grounding citations for this request.',
+        ...synthesisResult.critical_unknowns,
+      ];
+    }
 
     db.updateBackgroundJob(job.id, { progress_pct: 75 });
     // Step 3: Capture the reserved credit

@@ -140,7 +140,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
           AI-Assisted Research Workspace
         </h1>
         <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-          Generate a preliminary analysis with AI. This prototype does not retrieve or verify live sources; confirm facts against primary sources before relying on them.
+          Search the public web and prepare a preliminary analysis with linked citations. Review primary sources before acting on the findings.
         </p>
       </div>
 
@@ -251,10 +251,10 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             />
           </div>
 
-          {/* Requested source categories (retrieval is not implemented) */}
+          {/* Source categories are passed to the grounded Google Search request */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              4. Source Categories (not queried in this prototype)
+              4. Source Categories to Prioritize
             </label>
             <div className="space-y-2 text-xs text-slate-300">
               {[
@@ -309,7 +309,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             <div className="text-[11px] text-slate-400 space-y-2">
               <div className="flex items-start gap-2">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                <span>Source retrieval is not connected. AI output is preliminary and must be verified.</span>
+              <span>Gemini uses Google Search grounding. Search results can miss relevant sources, so review cited pages before acting.</span>
               </div>
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
@@ -407,11 +407,11 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Procurement & Operational Signals (source retrieval unavailable)
+                Source-supported Procurement & Operational Signals
               </h4>
               <ul className="space-y-2 text-xs text-slate-300">
                 {activeJobResult.result.procurement_signals.length === 0 && (
-                  <li className="text-slate-500">No source-verified signals. Source retrieval is not connected.</li>
+                  <li className="text-slate-500">No procurement-related claims had grounding citations. Check the search queries and source list below.</li>
                 )}
                 {activeJobResult.result.procurement_signals.map((sig, i) => (
                   <li key={i} className="flex items-start gap-2">
@@ -438,15 +438,23 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             </div>
           </div>
 
-          {/* Section 4: Source-backed facts (empty until source retrieval exists) */}
+          {/* Section 4: Claims directly supported by Gemini Search grounding metadata */}
           <div className="space-y-2">
             <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Source-Verified Facts
+              Google Search Grounded Claims
             </h4>
+            {activeJobResult.result.search_queries && activeJobResult.result.search_queries.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
+                <span className="font-semibold uppercase tracking-wide">Queries:</span>
+                {activeJobResult.result.search_queries.map((query, index) => (
+                  <span key={`${query}-${index}`} className="rounded border border-slate-800 bg-slate-950 px-2 py-1">{query}</span>
+                ))}
+              </div>
+            )}
             <div className="space-y-2">
               {activeJobResult.result.known_facts.length === 0 && (
                 <p className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-400">
-                  None. This prototype has not retrieved source documents for this analysis.
+                  Google Search returned no claim-level citations for this request. Treat the AI summary as preliminary.
                 </p>
               )}
               {activeJobResult.result.known_facts.map((fact, i) => (
@@ -457,7 +465,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
                   <div className="space-y-0.5">
                     <p className="text-slate-200 font-medium">{fact.claim}</p>
                     <span className="text-[11px] text-slate-400">
-                      Source: {fact.source_name} ({fact.confidence.toUpperCase()})
+                      Grounded by: {fact.source_name}
                     </span>
                   </div>
                   <a

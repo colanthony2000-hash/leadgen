@@ -241,6 +241,7 @@ export interface ResearchJob {
       source_url: string;
       confidence: ConfidenceLevel;
     }>;
+    search_queries?: string[];
     critical_unknowns: string[]; // Essential anti-hallucination requirement
     recommended_outreach_angle: string;
   };
