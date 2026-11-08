@@ -186,6 +186,10 @@ export class Database {
     return this.data.memberships.filter((m) => m.tenant_id === tenantId);
   }
 
+  public getMembershipsByUserId(userId: string): Membership[] {
+    return this.data.memberships.filter((m) => m.user_id === userId);
+  }
+
   public addMembership(membership: Membership): void {
     this.data.memberships.push(membership);
     this.save();
@@ -305,8 +309,8 @@ export class Database {
     return job;
   }
 
-  public getBackgroundJob(jobId: string): AsyncBackgroundJob | undefined {
-    return this.data.background_jobs.find((j) => j.id === jobId);
+  public getBackgroundJob(jobId: string, tenantId?: string): AsyncBackgroundJob | undefined {
+    return this.data.background_jobs.find((j) => j.id === jobId && (!tenantId || j.tenant_id === tenantId));
   }
 
   public updateBackgroundJob(jobId: string, updates: Partial<AsyncBackgroundJob>): AsyncBackgroundJob | undefined {
@@ -338,8 +342,8 @@ export class Database {
     this.save();
   }
 
-  public updateCrmLead(leadId: string, updates: Partial<CrmLead>): CrmLead | undefined {
-    const lead = this.data.crm_leads.find((l) => l.id === leadId);
+  public updateCrmLead(leadId: string, tenantId: string, updates: Partial<CrmLead>): CrmLead | undefined {
+    const lead = this.data.crm_leads.find((l) => l.id === leadId && l.tenant_id === tenantId);
     if (lead) {
       Object.assign(lead, updates, { updated_at: new Date().toISOString() });
       this.save();
@@ -347,8 +351,9 @@ export class Database {
     return lead;
   }
 
-  public getTasks(): Task[] {
-    return this.data.tasks;
+  public getTasks(tenantId: string): Task[] {
+    const leadIds = new Set(this.getCrmLeads(tenantId).map((lead) => lead.id));
+    return this.data.tasks.filter((task) => leadIds.has(task.lead_id));
   }
 
   public addTask(task: Task): void {
@@ -356,8 +361,8 @@ export class Database {
     this.save();
   }
 
-  public toggleTask(taskId: string): Task | undefined {
-    const task = this.data.tasks.find((t) => t.id === taskId);
+  public toggleTask(taskId: string, tenantId: string): Task | undefined {
+    const task = this.getTasks(tenantId).find((t) => t.id === taskId);
     if (task) {
       task.status = task.status === 'completed' ? 'pending' : 'completed';
       this.save();
@@ -365,11 +370,13 @@ export class Database {
     return task;
   }
 
-  public getActivities(leadId?: string): Activity[] {
+  public getActivities(tenantId: string, leadId?: string): Activity[] {
+    const tenantLeadIds = new Set(this.getCrmLeads(tenantId).map((lead) => lead.id));
     if (leadId) {
-      return this.data.activities.filter((a) => a.lead_id === leadId);
+      if (!tenantLeadIds.has(leadId)) return [];
+      return this.data.activities.filter((activity) => activity.lead_id === leadId);
     }
-    return this.data.activities;
+    return this.data.activities.filter((activity) => tenantLeadIds.has(activity.lead_id));
   }
 
   public addActivity(act: Activity): void {
@@ -386,8 +393,8 @@ export class Database {
     this.save();
   }
 
-  public updateOutreachDraft(draftId: string, updates: Partial<OutreachDraft>): OutreachDraft | undefined {
-    const draft = this.data.outreach_drafts.find((d) => d.id === draftId);
+  public updateOutreachDraft(draftId: string, tenantId: string, updates: Partial<OutreachDraft>): OutreachDraft | undefined {
+    const draft = this.data.outreach_drafts.find((d) => d.id === draftId && d.tenant_id === tenantId);
     if (draft) {
       Object.assign(draft, updates);
       this.save();

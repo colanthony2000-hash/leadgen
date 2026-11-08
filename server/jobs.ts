@@ -69,123 +69,70 @@ export class BackgroundJobWorker {
   private async handleAiResearch(job: AsyncBackgroundJob): Promise<void> {
     const { subject_name, subject_type, question, industry, offerings } = job.payload;
 
+    if (!this.aiClient) {
+      throw new Error('AI research is unavailable because GEMINI_API_KEY is not configured. No research result was generated.');
+    }
+
     db.updateBackgroundJob(job.id, { progress_pct: 35 });
 
-    let synthesisResult: any = null;
-
-    if (this.aiClient) {
-      try {
-        const prompt = `You are the lead intelligence analyst for Jeneconk BII (Business & Industrial Intelligence).
-Analyze the following target organization for B2B commercial opportunity, procurement readiness, and partnership fit.
+    const prompt = `You are preparing a preliminary commercial-fit analysis for Jeneconk BII.
 
 Subject: ${subject_name} (${subject_type || 'company'})
 Industry Sector: ${industry || 'General Industry'}
-Specific Research Focus: ${question || 'Identify procurement opportunities, asset maintenance programs, and decision-makers'}
-Our Company Offerings: ${JSON.stringify(offerings || [])}
+Research Focus: ${question || 'Assess possible fit with the supplied offerings'}
+Business Offerings: ${JSON.stringify(offerings || [])}
+Requested source types (not retrieved or supplied as documents): ${JSON.stringify(job.payload.sources || [])}
 
-Provide your analysis in JSON format with exactly the following structure:
+Important evidence limits:
+- You have not been given retrieved webpages, source excerpts, registry records, or live web search results.
+- Do not claim current company facts, active tenders, budgets, project dates, named decision-makers, registrations, certifications, or operational events.
+- Return an empty array for procurement_signals and known_facts. Do not invent citations or label anything verified.
+- Use role functions rather than real people in key_decision_makers, and label them as suggested roles to investigate.
+- Keep strategic_fit_analysis explicitly conditional on the supplied offerings and state that fit is not evidence of a current need.
+- Include the lack of source retrieval in critical_unknowns.
+- Do not make claims about Jeneconk credentials unless they appear in the supplied offerings.
+
+Return JSON with this shape:
 {
-  "executive_summary": "1-2 concise paragraphs summarizing the organization's current operations, capital programs, and commercial posture",
-  "strategic_fit_analysis": "Detailed explanation of why our offerings are or are not compatible with their procurement criteria",
-  "procurement_signals": ["Signal 1 with specific date or project context", "Signal 2", "Signal 3"],
-  "key_decision_makers": [
-    {
-      "name": "Full Name or Title",
-      "title": "Exact Corporate or Operational Title",
-      "relevance": "Why this executive holds signing authority or technical gatekeeping power"
-    }
-  ],
-  "known_facts": [
-    {
-      "claim": "Specific verifiable statement of fact",
-      "source_name": "Official registry, published tender, or regulatory gazette",
-      "source_url": "https://example.com/source",
-      "confidence": "verified"
-    }
-  ],
-  "critical_unknowns": [
-    "Crucial unknown 1 (e.g. unverified budget ceiling, private subcontractor terms)",
-    "Crucial unknown 2"
-  ],
-  "recommended_outreach_angle": "Actionable, evidence-backed outreach strategy"
+  "executive_summary": "Brief preliminary analysis, explicitly stating this is not source-verified",
+  "strategic_fit_analysis": "Conditional fit assessment based only on the supplied offerings",
+  "procurement_signals": [],
+  "key_decision_makers": [{ "name": "Role to identify", "title": "Suggested role", "relevance": "Why this role may be relevant; verify for the target" }],
+  "known_facts": [],
+  "critical_unknowns": ["Current operations and procurement activity have not been verified from source documents."],
+  "recommended_outreach_angle": "A cautious discovery question, not a claim about the target"
 }
 
-IMPORTANT: Do not hallucinate private phone numbers, fake contract sums, or unverified claims. Clearly state unverified items in 'critical_unknowns'. Output pure JSON only.`;
+Return valid JSON only.`;
 
-        const response = await this.aiClient.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
+    const response = await this.aiClient.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { responseMimeType: 'application/json' },
+    });
 
-        if (response.text) {
-          synthesisResult = JSON.parse(response.text);
-        }
-      } catch (err: any) {
-        console.warn('Gemini live call timed out or errored in background, using grounded domain synthesis:', err?.message);
-      }
+    if (!response.text) {
+      throw new Error('AI research returned an empty response.');
     }
+
+    const synthesisResult = JSON.parse(response.text);
+    if (
+      typeof synthesisResult.executive_summary !== 'string' ||
+      typeof synthesisResult.strategic_fit_analysis !== 'string' ||
+      !Array.isArray(synthesisResult.procurement_signals) ||
+      !Array.isArray(synthesisResult.key_decision_makers) ||
+      !Array.isArray(synthesisResult.known_facts) ||
+      !Array.isArray(synthesisResult.critical_unknowns) ||
+      typeof synthesisResult.recommended_outreach_angle !== 'string'
+    ) {
+      throw new Error('AI research returned an invalid response structure.');
+    }
+
+    // No source retrieval is implemented yet, so never expose model-written source claims.
+    synthesisResult.known_facts = [];
+    synthesisResult.procurement_signals = [];
 
     db.updateBackgroundJob(job.id, { progress_pct: 75 });
-
-    if (!synthesisResult) {
-      const isOAG = industry === 'oil_and_gas' || subject_name.toLowerCase().includes('lng') || subject_name.toLowerCase().includes('oil');
-      synthesisResult = {
-        executive_summary: isOAG
-          ? `${subject_name} is operating in an active phase of West African asset integrity renewal and facility debottlenecking. Engineering reviews highlight strict enforcement of NCDMB local Nigerian content quotas and statutory NUPRC pressure-boundary non-destructive testing.`
-          : `${subject_name} is implementing its multi-year laboratory modernisation and digital instructional materials integration. Institutional budgets prioritize experiential science packages, curriculum alignment with WAEC/British/IB syllabi, and teacher CPD.`,
-        strategic_fit_analysis: isOAG
-          ? `94% compatibility with Jeneconk's Category 3.01.05 registered ultrasonic testing, subsea riser inspection, and technician LMS compliance trackers.`
-          : `96% compatibility with Jeneconk's modular secondary STEM experiment kits and digitized structured lesson-note repositories.`,
-        procurement_signals: isOAG
-          ? [
-              'Active pre-qualification notices on NipeX JQS Category 3.01.05 and 3.01.08.',
-              'Upcoming Q1-Q2 2027 planned shutdown maintenance window.',
-              'Offshore riser ultrasonic inspection tenders open to qualified domestic engineering vendors.',
-            ]
-          : [
-              'Board-approved laboratory modernisation capital budget.',
-              'Active request for proposal for physics, chemistry, and robotics modular apparatus.',
-              'Mandatory faculty training accreditation bundled into equipment procurement.',
-            ],
-        key_decision_makers: [
-          {
-            name: isOAG ? 'General Manager, Plant Maintenance & Integrity' : 'Director of Education & Academic Quality',
-            title: isOAG ? 'GM Production Engineering' : 'Central Academic Director',
-            relevance: isOAG
-              ? 'Approves technical testing procedures and offshore personnel deployment qualifications.'
-              : 'Authorizes curriculum apparatus adoption and faculty training workshops.',
-          },
-          {
-            name: isOAG ? 'Head of Upstream Contracting' : 'Head of Educational Resources Procurement',
-            title: isOAG ? 'Contracts & Procurement Lead' : 'Central Procurement Manager',
-            relevance: isOAG
-              ? 'Oversees commercial evaluation, bidder shortlisting, and NipeX compliance.'
-              : 'Manages pricing terms, institutional delivery logistics, and supplier agreements.',
-          },
-        ],
-        known_facts: [
-          {
-            claim: isOAG
-              ? `${subject_name} requires mandatory NDT verification for all marine terminal pipe sections.`
-              : `${subject_name} operates multi-campus accredited teaching laboratories.`,
-            source_name: isOAG ? 'NUPRC Safety Gazettes' : 'Accredited Educational Directory',
-            source_url: 'https://registry.example.gov.ng/filing',
-            confidence: 'verified',
-          },
-        ],
-        critical_unknowns: [
-          'Internal commercial budget ceiling is confidential under statutory joint venture rules.',
-          'Subcontractor accommodation logistics during peak turnaround require field liaison confirmation.',
-        ],
-        recommended_outreach_angle: isOAG
-          ? `Highlight Jeneconk's active NIPEX Category 3.01.05 qualification, ISO 9001 certification, and zero-downtime offshore inspection record.`
-          : `Offer an in-person demonstration of the modular STEM kits bundled with accredited teacher CPD modules directly to academic leadership.`,
-      };
-    }
-
     // Step 3: Capture the reserved credit
     const currentBal = db.getCreditBalance(job.tenant_id);
     const captureTx: CreditTransaction = {

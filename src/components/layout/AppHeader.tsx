@@ -12,7 +12,8 @@ import {
   Check,
   SlidersHorizontal,
   Briefcase,
-  Menu
+  Menu,
+  LogOut
 } from 'lucide-react';
 import { IndustryCode } from '../../types';
 
@@ -21,6 +22,7 @@ interface AppHeaderProps {
   onOpenResearch: () => void;
   currentView: string;
   onToggleMobileSidebar?: () => void;
+  onSignOut: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -28,6 +30,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenResearch,
   currentView,
   onToggleMobileSidebar,
+  onSignOut,
 }) => {
   const {
     activeTenant,
@@ -41,6 +44,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     searchQuery,
     setSearchQuery,
     setIsPrivacyModalOpen,
+    isDemoMode,
   } = useApp();
 
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
@@ -193,13 +197,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             </span>
             <span className="text-[10px] text-slate-400">credits</span>
           </div>
-          <button
-            onClick={() => setIsTopUpOpen(true)}
-            title="Top Up Credits"
-            className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-300 transition-colors"
-          >
-            <Plus className="w-3 h-3" />
-          </button>
+          {isDemoMode && (
+            <button
+              onClick={() => setIsTopUpOpen(true)}
+              title="Top Up Demo Credits"
+              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-300 transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          )}
         </div>
 
         {/* NDPA Privacy & Suppression Registry */}
@@ -236,11 +242,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               {currentUser.role}
             </span>
           </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            title="Sign out"
+            aria-label="Sign out"
+            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
       {/* Top-Up Credits Modal */}
-      {isTopUpOpen && (
+      {isTopUpOpen && isDemoMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">

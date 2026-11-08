@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: leadgen-pilot
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: PILOT_AUTH_EMAIL
+        sync: false
+      - key: PILOT_TENANT_ID
+        value: tenant-jeneconk-hq
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_PILOT_TENANT_ID
+        value: tenant-jeneconk-hq
+      - key: GEMINI_API_KEY
+        sync: false

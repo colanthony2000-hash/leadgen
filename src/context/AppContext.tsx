@@ -25,7 +25,6 @@ import {
 } from '../types';
 import {
   SEED_TENANTS,
-  CURRENT_USER,
   SEED_MEMBERSHIPS,
   INITIAL_BUSINESS_PROFILE,
   SEED_COMPANIES,
@@ -50,6 +49,8 @@ interface AppContextType {
   tenants: Tenant[];
   currentUser: User;
   memberships: Membership[];
+  signOut: () => void;
+  isDemoMode: boolean;
   switchWorkspace: (tenantId: string) => void;
   inviteMember: (email: string, role: RoleCode) => void;
 
@@ -80,7 +81,8 @@ interface AppContextType {
     subjectId: string,
     subjectName: string,
     prompt: string,
-    sources: string[]
+    sources: string[],
+    onProgress?: (progressPct: number, status: string) => void
   ) => Promise<ResearchJob>;
 
   // CRM & Pipeline Actions
@@ -132,7 +134,14 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{
+  children: React.ReactNode;
+  user: User;
+  tenants?: Tenant[];
+  memberships?: Membership[];
+  onSignOut?: () => void;
+  demoMode?: boolean;
+}> = ({ children, user, tenants: authorizedTenants, memberships: authorizedMemberships, onSignOut, demoMode = false }) => {
   // Toast notifications state
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -156,65 +165,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
   // Tenancy
-  const [tenants] = useState<Tenant[]>(SEED_TENANTS);
-  const [activeTenantId, setActiveTenantId] = useState<string>('tenant-jeneconk-hq');
-  const [currentUser] = useState<User>(CURRENT_USER);
-  const [memberships, setMemberships] = useState<Membership[]>(SEED_MEMBERSHIPS);
+  const [tenants] = useState<Tenant[]>(authorizedTenants || SEED_TENANTS);
+  const [activeTenantId, setActiveTenantId] = useState<string>(authorizedTenants?.[0]?.id || import.meta.env.VITE_PILOT_TENANT_ID || 'tenant-jeneconk-hq');
+  const [currentUser] = useState<User>(user);
+  const [memberships, setMemberships] = useState<Membership[]>(authorizedMemberships || SEED_MEMBERSHIPS);
 
   // Industry & Profile
   const [activeIndustry, setActiveIndustry] = useState<IndustryCode | 'all'>('all');
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_profile');
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_profile') : null;
     return saved ? JSON.parse(saved) : INITIAL_BUSINESS_PROFILE;
   });
 
   // Entities
   const [companies, setCompanies] = useState<Company[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_companies');
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_companies') : null;
     return saved ? JSON.parse(saved) : SEED_COMPANIES;
   });
 
   const [contacts, setContacts] = useState<Contact[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_contacts');
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_contacts') : null;
     return saved ? JSON.parse(saved) : SEED_CONTACTS;
   });
 
-  const [projects] = useState<Project[]>(SEED_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>(SEED_PROJECTS);
   const [procurementNotices, setProcurementNotices] = useState<ProcurementNotice[]>(SEED_PROCUREMENT_NOTICES);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(SEED_SAVED_SEARCHES);
   const [leadLists, setLeadLists] = useState<LeadList[]>(SEED_LEAD_LISTS);
 
   // Research
   const [researchJobs, setResearchJobs] = useState<ResearchJob[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_research_jobs');
-    return saved ? JSON.parse(saved) : SEED_RESEARCH_JOBS;
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_research_jobs') : null;
+    return saved ? JSON.parse(saved) : demoMode ? SEED_RESEARCH_JOBS : [];
   });
 
   // CRM
   const [crmLeads, setCrmLeads] = useState<CrmLead[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_crm_leads');
-    return saved ? JSON.parse(saved) : SEED_CRM_LEADS;
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_crm_leads') : null;
+    return saved ? JSON.parse(saved) : demoMode ? SEED_CRM_LEADS : [];
   });
 
   const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_tasks');
-    return saved ? JSON.parse(saved) : SEED_TASKS;
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_tasks') : null;
+    return saved ? JSON.parse(saved) : demoMode ? SEED_TASKS : [];
   });
 
   const [activities, setActivities] = useState<Activity[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_activities');
-    return saved ? JSON.parse(saved) : SEED_ACTIVITIES;
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_activities') : null;
+    return saved ? JSON.parse(saved) : demoMode ? SEED_ACTIVITIES : [];
   });
 
   const [outreachDrafts, setOutreachDrafts] = useState<OutreachDraft[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_outreach_drafts');
-    return saved ? JSON.parse(saved) : SEED_OUTREACH_DRAFTS;
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_outreach_drafts') : null;
+    return saved ? JSON.parse(saved) : demoMode ? SEED_OUTREACH_DRAFTS : [];
   });
 
   // Credits
   const [creditTransactions, setCreditTransactions] = useState<CreditTransaction[]>(() => {
-    const saved = localStorage.getItem('jeneconk_bii_credit_tx');
-    return saved ? JSON.parse(saved) : INITIAL_CREDIT_TRANSACTIONS;
+    const saved = demoMode ? localStorage.getItem('jeneconk_bii_credit_tx') : null;
+    return saved ? JSON.parse(saved) : demoMode ? INITIAL_CREDIT_TRANSACTIONS : [];
   });
 
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(SEED_AUDIT_LOGS);
@@ -230,9 +239,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
 
   // Calculate current credit balance from transaction ledger
-  const creditBalance = creditTransactions.length > 0
+  const [authoritativeCreditBalance, setAuthoritativeCreditBalance] = useState<number | null>(null);
+  const creditBalance = !demoMode && authoritativeCreditBalance !== null
+    ? authoritativeCreditBalance
+    : creditTransactions.length > 0
     ? creditTransactions[creditTransactions.length - 1].balance_after
-    : 1000;
+    : demoMode ? 1000 : 0;
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
 
@@ -241,38 +253,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     api.setTenantContext(activeTenantId, currentUser.display_name);
   }, [activeTenantId, currentUser]);
 
+  useEffect(() => {
+    if (demoMode) return;
+    let active = true;
+    const loadWorkspaceData = async () => {
+      const results = await Promise.allSettled([
+        api.getProfile(),
+        api.getCompanies(),
+        api.getContacts(),
+        api.getProjects(),
+        api.getTenders(),
+        api.getCreditTransactions(),
+        api.getCreditBalance(),
+        api.getResearchDossiers(),
+        api.getCrmLeads(),
+        api.getTasks(),
+        api.getActivities(),
+        api.getOutreachDrafts(),
+      ]);
+      if (!active) return;
+
+      const [profile, companyData, contactData, projectData, tenderData, creditData, balanceData, researchData, leadData, taskData, activityData, draftData] = results;
+      if (profile.status === 'fulfilled' && profile.value) setBusinessProfile(profile.value);
+      if (companyData.status === 'fulfilled') setCompanies(companyData.value);
+      if (contactData.status === 'fulfilled') setContacts(contactData.value);
+      if (projectData.status === 'fulfilled') setProjects(projectData.value);
+      if (tenderData.status === 'fulfilled') setProcurementNotices(tenderData.value);
+      if (creditData.status === 'fulfilled') setCreditTransactions(creditData.value);
+      if (balanceData.status === 'fulfilled') setAuthoritativeCreditBalance(balanceData.value);
+      if (researchData.status === 'fulfilled') setResearchJobs(researchData.value);
+      if (leadData.status === 'fulfilled') setCrmLeads(leadData.value);
+      if (taskData.status === 'fulfilled') setTasks(taskData.value);
+      if (activityData.status === 'fulfilled') setActivities(activityData.value);
+      if (draftData.status === 'fulfilled') setOutreachDrafts(draftData.value);
+
+      const failures = results.filter((result) => result.status === 'rejected').length;
+      if (failures) addToast('warning', 'Some workspace data could not load', `${failures} API requests failed. Check your connection and permissions.`);
+    };
+    void loadWorkspaceData();
+    return () => { active = false; };
+  }, [activeTenantId, demoMode]);
+
   // Sync to localStorage
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_companies', JSON.stringify(companies));
-  }, [companies]);
+  }, [companies, demoMode]);
 
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_contacts', JSON.stringify(contacts));
-  }, [contacts]);
+  }, [contacts, demoMode]);
 
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_crm_leads', JSON.stringify(crmLeads));
-  }, [crmLeads]);
+  }, [crmLeads, demoMode]);
 
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_tasks', JSON.stringify(tasks));
-  }, [tasks]);
+  }, [tasks, demoMode]);
 
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_activities', JSON.stringify(activities));
-  }, [activities]);
+  }, [activities, demoMode]);
 
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_outreach_drafts', JSON.stringify(outreachDrafts));
-  }, [outreachDrafts]);
+  }, [outreachDrafts, demoMode]);
 
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_credit_tx', JSON.stringify(creditTransactions));
-  }, [creditTransactions]);
+  }, [creditTransactions, demoMode]);
 
   useEffect(() => {
+    if (!demoMode) return;
     localStorage.setItem('jeneconk_bii_profile', JSON.stringify(businessProfile));
-  }, [businessProfile]);
+  }, [businessProfile, demoMode]);
 
   const switchWorkspace = (tenantId: string) => {
     setActiveTenantId(tenantId);
@@ -292,6 +353,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const inviteMember = (email: string, role: RoleCode) => {
+    if (!demoMode) {
+      void api.inviteMember(activeTenant.id, email, role)
+        .then((membership) => setMemberships((prev) => [...prev, membership]))
+        .catch((error) => addToast('warning', 'Invitation unavailable', error instanceof Error ? error.message : 'Invitation delivery is not configured.'));
+      return;
+    }
     const newMembership: Membership = {
       id: `mem-${Date.now()}`,
       tenant_id: activeTenant.id,
@@ -325,6 +392,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const saveCompany = (companyId: string) => {
+    if (!demoMode) {
+      addToast('warning', 'Company saving unavailable', 'Workspace-specific company lists are not connected yet.');
+      return;
+    }
     const comp = companies.find((c) => c.id === companyId);
     setCompanies((prev) =>
       prev.map((c) => (c.id === companyId ? { ...c, is_saved: true } : c))
@@ -334,6 +405,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const unsaveCompany = (companyId: string) => {
+    if (!demoMode) {
+      addToast('warning', 'Company saving unavailable', 'Workspace-specific company lists are not connected yet.');
+      return;
+    }
     const comp = companies.find((c) => c.id === companyId);
     setCompanies((prev) =>
       prev.map((c) => (c.id === companyId ? { ...c, is_saved: false } : c))
@@ -342,6 +417,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const enrichCompany = async (companyId: string): Promise<boolean> => {
+    if (!demoMode) {
+      addToast('warning', 'Enrichment unavailable', 'A licensed company data provider is not connected. No credits were charged.');
+      return false;
+    }
     const cost = 2;
     if (creditBalance < cost) {
       alert(`Insufficient credits! This operation requires ${cost} credits. Current balance: ${creditBalance}`);
@@ -541,32 +620,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     subjectId: string,
     subjectName: string,
     prompt: string,
-    sources: string[]
+    sources: string[],
+    onProgress?: (progressPct: number, status: string) => void
   ): Promise<ResearchJob> => {
     const cost = 5;
-    if (creditBalance < cost) {
-      throw new Error(`Insufficient credits. Required: ${cost}, Available: ${creditBalance}`);
+    onProgress?.(0, 'Checking workspace credits...');
+    const serverBalance = await api.getCreditBalance();
+    setAuthoritativeCreditBalance(serverBalance);
+    setCreditTransactions(await api.getCreditTransactions());
+    if (serverBalance < cost) {
+      throw new Error(`Insufficient credits. Required: ${cost}, Available: ${serverBalance}`);
     }
 
-    // Step 1: Credit Reservation
-    const reservedBalance = creditBalance - cost;
-    const jobId = `res-job-${Date.now()}`;
-    const txReserve: CreditTransaction = {
-      id: `tx-${Date.now()}`,
-      tenant_id: activeTenant.id,
-      transaction_type: 'reservation',
-      amount: -cost,
-      balance_after: reservedBalance,
-      description: `Credit reservation: AI Deep Research on ${subjectName}`,
-      reference_type: 'ai_research',
-      reference_id: jobId,
-      created_at: new Date().toISOString(),
-    };
-    setCreditTransactions((prev) => [...prev, txReserve]);
+    onProgress?.(5, 'Submitting research job...');
+    const accepted = await api.startResearchJob({
+      subject_name: subjectName,
+      subject_type: subjectType,
+      question: prompt,
+      industry: activeIndustry === 'all' ? 'General Industry' : activeIndustry,
+      offerings: businessProfile.offerings,
+      sources,
+      subject_id: subjectId,
+    });
 
-    // Step 2: Create Queued Job
-    const newJob: ResearchJob = {
-      id: jobId,
+    const queuedJob: ResearchJob = {
+      id: accepted.job_id,
       tenant_id: activeTenant.id,
       subject_type: subjectType,
       subject_id: subjectId,
@@ -574,125 +652,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       research_question: prompt,
       scope_sources: sources,
       status: 'queued',
-      credit_cost: cost,
+      credit_cost: accepted.credit_reserved,
       created_at: new Date().toISOString(),
     };
-    setResearchJobs((prev) => [newJob, ...prev]);
-
-    // Simulate async pipeline execution
-    await new Promise((r) => setTimeout(r, 1200));
-
-    // Try server-side or local intelligent synthesis
-    let synthesisResult: ResearchJob['result'];
+    setResearchJobs((prev) => [queuedJob, ...prev.filter((job) => job.id !== queuedJob.id)]);
+    setAuthoritativeCreditBalance((balance) => balance === null ? null : balance - accepted.credit_reserved);
 
     try {
-      const resp = await fetch('/api/research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject_name: subjectName,
-          subject_type: subjectType,
-          question: prompt,
-          industry: activeIndustry,
-          offerings: businessProfile.offerings,
-        }),
+      setCreditTransactions(await api.getCreditTransactions());
+      setAuthoritativeCreditBalance(await api.getCreditBalance());
+      const result = await api.pollJobUntilComplete(accepted.job_id, (progress, status) => {
+        onProgress?.(progress, status === 'running' ? 'AI analysis is running...' : 'Waiting for the research worker...');
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.result) {
-          synthesisResult = data.result;
-        }
-      }
-    } catch {
-      // Graceful local synthesis
-    }
-
-    if (!synthesisResult) {
-      const isOAG = activeIndustry === 'oil_and_gas' || subjectName.toLowerCase().includes('lng') || subjectName.toLowerCase().includes('oil');
-      synthesisResult = {
-        executive_summary: isOAG
-          ? `${subjectName} maintains substantial ongoing capital commitments in West African energy infrastructure. Operational audits indicate heightened emphasis on local Nigerian content compliance, offshore safety standards (BOSIET/OPITO), and preventative maintenance during planned dry-dock and shutdown windows.`
-          : `${subjectName} has allocated strategic funding for laboratory modernisation, digital instructional resource adoption, and accredited educator CPD. Institutional priorities focus on measurable STEM exam performance and standardized modular teaching materials.`,
-        strategic_fit_analysis: isOAG
-          ? `Calculated 92% compatibility with Jeneconk's NIPEX-registered non-destructive testing (NDT), subsea ultrasonic wall-thickness mapping, and engineering compliance LMS solutions.`
-          : `Calculated 95% compatibility with Jeneconk's hands-on STEM science apparatus, digitized teacher lesson-note repositories, and school CPD modules.`,
-        procurement_signals: isOAG
-          ? [
-              'Active pre-qualification notices on NipeX JQS Category 3.01.05 and 3.01.08.',
-              'Major asset turnaround inspection tenders scheduled within the next 6-9 months.',
-              'Local contractor involvement mandated by NCDMB Nigerian Content Act.',
-            ]
-          : [
-              'Institutional Board approved multi-campus laboratory upgrade budget.',
-              'Seeking suppliers with local inventory and certified teacher training workshops.',
-              'Direct procurement window closes before academic term commencement.',
-            ],
-        key_decision_makers: [
-          {
-            name: isOAG ? 'Technical Maintenance Director' : 'Academic & Curriculum Director',
-            title: isOAG ? 'General Manager, Asset Integrity' : 'Director of Education Quality',
-            relevance: isOAG
-              ? 'Controls specifications for pipeline integrity, NDT inspection standards, and offshore vendor approvals.'
-              : 'Evaluates curriculum alignment, classroom equipment safety, and teacher instructional guides.',
-          },
-          {
-            name: isOAG ? 'Head of Upstream Contracting' : 'Head of Educational Procurement',
-            title: isOAG ? 'Commercial Contracting Manager' : 'Central Procurement Lead',
-            relevance: isOAG
-              ? 'Issues commercial tender documentation and evaluates NipeX compliance bids.'
-              : 'Coordinates vendor onboarding, volume purchase discounts, and delivery logistics.',
-          },
-        ],
-        known_facts: [
-          {
-            claim: isOAG
-              ? `${subjectName} conducts mandatory ultrasonic testing and corrosion mapping on all marine pipelines.`
-              : `${subjectName} operates accredited laboratory facilities with formal curriculum standards.`,
-            source_name: isOAG ? 'Official Regulatory Filing (NUPRC)' : 'Accreditation Board Directory',
-            source_url: 'https://registry.example.gov.ng/records',
-            confidence: 'verified',
-          },
-        ],
-        critical_unknowns: [
-          'Direct internal commercial budget ceiling has not been published in open regulatory gazettes.',
-          'Subcontracting timeline requirements are subject to statutory joint-venture approvals.',
-        ],
-        recommended_outreach_angle: isOAG
-          ? `Emphasize Jeneconk's active NIPEX Category 3.01.05 registration, ISO 9001 certification, and zero-downtime offshore inspection record.`
-          : `Propose an in-person demonstration of the modular STEM kits bundled with complimentary accredited teacher training for their academic leads.`,
+      const completedJob: ResearchJob = {
+        ...queuedJob,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        result,
       };
+      setResearchJobs((prev) => prev.map((job) => job.id === completedJob.id ? completedJob : job));
+      setCreditTransactions(await api.getCreditTransactions());
+      setAuthoritativeCreditBalance(await api.getCreditBalance());
+      logAudit('AI_RESEARCH_COMPLETED', 'ResearchJob', accepted.job_id, `Completed AI-assisted analysis for ${subjectName}.`);
+      return completedJob;
+    } catch (error) {
+      let status: ResearchJob['status'] = 'failed';
+      try {
+        const serverJob = await api.getJobStatus(accepted.job_id);
+        if (serverJob.status === 'queued' || serverJob.status === 'running') {
+          status = serverJob.status;
+        }
+      } catch {
+        // Keep the last known status if the server cannot be reached.
+      }
+      const interruptedJob: ResearchJob = { ...queuedJob, status };
+      setResearchJobs((prev) => prev.map((job) => job.id === interruptedJob.id ? interruptedJob : job));
+      setCreditTransactions(await api.getCreditTransactions());
+      throw error;
     }
-
-    // Step 3: Capture settlement transaction
-    const txCapture: CreditTransaction = {
-      id: `tx-${Date.now()}`,
-      tenant_id: activeTenant.id,
-      transaction_type: 'capture',
-      amount: 0,
-      balance_after: reservedBalance,
-      description: `Settled AI Deep Research on ${subjectName}`,
-      reference_type: 'ai_research',
-      reference_id: jobId,
-      created_at: new Date().toISOString(),
-    };
-    setCreditTransactions((prev) => [...prev, txCapture]);
-
-    const completedJob: ResearchJob = {
-      ...newJob,
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      result: synthesisResult,
-    };
-
-    setResearchJobs((prev) =>
-      prev.map((j) => (j.id === jobId ? completedJob : j))
-    );
-
-    logAudit('AI_RESEARCH_COMPLETED', 'ResearchJob', jobId, `Completed deep research for ${subjectName} (${cost} credits).`);
-
-    return completedJob;
   };
-
   const generateOutreachDraft = (leadId: string, contactId: string, purpose?: string): OutreachDraft => {
     const lead = crmLeads.find((l) => l.id === leadId);
     const contact = contacts.find((c) => c.id === contactId);
@@ -779,6 +777,10 @@ ${businessProfile.company_name}`;
   };
 
   const sendOutreachDraft = async (draftId: string): Promise<boolean> => {
+    if (!demoMode) {
+      addToast('warning', 'Email delivery unavailable', 'No email provider is connected. The draft was not sent.');
+      return false;
+    }
     const draft = outreachDrafts.find((d) => d.id === draftId);
     if (!draft) return false;
     if (draft.status !== 'approved') {
@@ -862,6 +864,10 @@ ${businessProfile.company_name}`;
   };
 
   const topUpCredits = (amount: number, note: string) => {
+    if (!demoMode) {
+      addToast('warning', 'Credit purchases unavailable', 'Payment processing is not connected for this workspace.');
+      return;
+    }
     const newBal = creditBalance + amount;
     const tx: CreditTransaction = {
       id: `tx-${Date.now()}`,
@@ -884,7 +890,11 @@ ${businessProfile.company_name}`;
       setProcurementNotices((prev) => [res, ...prev]);
       addToast('success', 'Tender Notice Published', `Verified notice ${res.notice_reference} ingested into workspace.`);
       logAudit('TENDER_INTAKE_SUBMITTED', 'ProcurementNotice', res.id, `Analyst curated tender intake: ${res.title}`);
-    } catch {
+    } catch (error) {
+      if (!demoMode) {
+        addToast('error', 'Tender intake unavailable', error instanceof Error ? error.message : 'Curator intake is not configured.');
+        return;
+      }
       // Local fallback
       const fallback: ProcurementNotice = {
         id: `tender-${Date.now()}`,
@@ -917,6 +927,8 @@ ${businessProfile.company_name}`;
         tenants,
         currentUser,
         memberships,
+        signOut: onSignOut || (() => undefined),
+        isDemoMode: demoMode,
         switchWorkspace,
         inviteMember,
 

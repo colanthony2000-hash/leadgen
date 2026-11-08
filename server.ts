@@ -4,12 +4,20 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { db, hashIdentifier } from './server/db';
 import { worker } from './server/jobs';
-import { CrmLead, PipelineStage, Task, Activity, OutreachDraft, CreditTransaction, ProcurementNotice } from './src/types';
+import { CrmLead, PipelineStage, Task, Activity, OutreachDraft, CreditTransaction, RoleCode, User } from './src/types';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+const supabaseAuthClient = supabaseUrl && supabasePublishableKey
+  ? createClient(supabaseUrl, supabasePublishableKey, {
+      auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+    })
+  : null;
 
 app.use(express.json());
 
@@ -17,14 +25,9 @@ app.use(express.json());
 interface TenantRequest extends Request {
   tenantId: string;
   actorName: string;
+  userId: string;
+  role: RoleCode;
 }
-
-app.use((req: Request, _res: Response, next: NextFunction) => {
-  const tenantReq = req as TenantRequest;
-  tenantReq.tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-jeneconk-hq';
-  tenantReq.actorName = (req.headers['x-actor-name'] as string) || 'Dr. Kenneth Adebayo';
-  next();
-});
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
@@ -37,34 +40,133 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
+// Authenticate every API request and derive the active workspace from server-side membership.
+app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
+  if (req.path === '/health') return next();
+
+  const demoApiEnabled =
+    process.env.NODE_ENV !== 'production' &&
+    process.env.ALLOW_UNAUTHENTICATED_DEMO_API === 'true';
+
+  if (demoApiEnabled) {
+    const demoRequest = req as TenantRequest;
+    demoRequest.tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-jeneconk-hq';
+    demoRequest.actorName = 'Local Demo User';
+    demoRequest.userId = 'local-demo-user';
+    demoRequest.role = 'owner';
+    return next();
+  }
+
+  if (!supabaseAuthClient) {
+    return res.status(503).json({ error: 'Authentication is not configured on the server.' });
+  }
+
+  const authorization = req.header('Authorization');
+  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return res.status(401).json({ error: 'Bearer access token required.' });
+
+  try {
+    const { data, error } = await supabaseAuthClient.auth.getUser(token);
+    if (error || !data.user || data.user.is_anonymous) {
+      return res.status(401).json({ error: 'A valid signed-in user session is required.' });
+    }
+
+    const userId = data.user.id;
+    const bootstrapUserId = process.env.PILOT_AUTH_USER_ID;
+    const bootstrapUserEmail = process.env.PILOT_AUTH_EMAIL?.trim().toLowerCase();
+    const authenticatedEmail = data.user.email?.trim().toLowerCase();
+    const isBootstrapUser =
+      (!!bootstrapUserId && userId === bootstrapUserId) ||
+      (!!bootstrapUserEmail && authenticatedEmail === bootstrapUserEmail && !!data.user.email_confirmed_at);
+    const bootstrapTenantId = process.env.PILOT_TENANT_ID || 'tenant-jeneconk-hq';
+    if (isBootstrapUser && db.getMembershipsByUserId(userId).length === 0) {
+      const tenant = db.getTenant(bootstrapTenantId);
+      if (!tenant) return res.status(503).json({ error: 'Configured pilot workspace does not exist.' });
+      db.addMembership({
+        id: `mem-auth-${userId}`,
+        tenant_id: bootstrapTenantId,
+        user_id: userId,
+        user_name: data.user.email || 'Pilot owner',
+        user_email: data.user.email || '',
+        role: 'owner',
+        status: 'active',
+        joined_at: new Date().toISOString(),
+      });
+    }
+
+    const memberships = db.getMembershipsByUserId(userId).filter((membership) => membership.status === 'active');
+    if (memberships.length === 0) {
+      return res.status(403).json({ error: 'This account has no active workspace membership.' });
+    }
+
+    const requestedTenantId = req.path === '/me' ? undefined : req.header('X-Tenant-Id');
+    const membership = requestedTenantId
+      ? memberships.find((item) => item.tenant_id === requestedTenantId)
+      : memberships.length === 1 ? memberships[0] : undefined;
+    if (!membership) {
+      return res.status(requestedTenantId ? 403 : 400).json({
+        error: requestedTenantId ? 'You are not a member of the requested workspace.' : 'Select an authorized workspace.',
+      });
+    }
+
+    const tenantRequest = req as TenantRequest;
+    tenantRequest.tenantId = membership.tenant_id;
+    tenantRequest.actorName = membership.user_name;
+    tenantRequest.userId = userId;
+    tenantRequest.role = membership.role;
+    return next();
+  } catch (error) {
+    console.error('Authentication verification failed:', error);
+    return res.status(503).json({ error: 'Unable to verify the access token right now.' });
+  }
+});
+
+const requireRoles = (...allowedRoles: RoleCode[]) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const tenantReq = req as TenantRequest;
+    if (!allowedRoles.includes(tenantReq.role)) {
+      return res.status(403).json({ error: 'Your workspace role is not allowed to perform this action.' });
+    }
+    return next();
+  };
+
 // --- Workspaces & Members ---
-app.get('/api/workspaces', (_req: Request, res: Response) => {
-  res.json(db.getTenants());
+app.get('/api/me', (req: Request, res: Response) => {
+  const tenantReq = req as TenantRequest;
+  const memberships = db.getMembershipsByUserId(tenantReq.userId).filter((membership) => membership.status === 'active');
+  const currentMembership = memberships.find((membership) => membership.tenant_id === tenantReq.tenantId)!;
+  const user: User = {
+    id: tenantReq.userId,
+    email: currentMembership.user_email,
+    display_name: currentMembership.user_name,
+    role: currentMembership.role,
+    status: 'active',
+  };
+  res.json({
+    user,
+    memberships,
+    tenants: memberships.map((membership) => db.getTenant(membership.tenant_id)).filter(Boolean),
+  });
+});
+
+app.get('/api/workspaces', (req: Request, res: Response) => {
+  const tenantReq = req as TenantRequest;
+  const tenants = db.getMembershipsByUserId(tenantReq.userId)
+    .filter((membership) => membership.status === 'active')
+    .map((membership) => db.getTenant(membership.tenant_id))
+    .filter(Boolean);
+  res.json(tenants);
 });
 
 app.get('/api/workspaces/:id/members', (req: Request, res: Response) => {
+  const tenantReq = req as TenantRequest;
+  if (req.params.id !== tenantReq.tenantId) return res.status(403).json({ error: 'Workspace access denied.' });
   const members = db.getMemberships(req.params.id);
   res.json(members);
 });
 
-app.post('/api/workspaces/:id/invitations', (req: Request, res: Response) => {
-  const { email, role } = req.body;
-  if (!email || !role) return res.status(400).json({ error: 'email and role required' });
-
-  const tenantReq = req as TenantRequest;
-  const newMembership = {
-    id: `mem-${Date.now()}`,
-    tenant_id: req.params.id,
-    user_id: `user-inv-${Date.now()}`,
-    user_name: email.split('@')[0],
-    user_email: email,
-    role,
-    status: 'invited' as const,
-    joined_at: new Date().toISOString(),
-  };
-  db.addMembership(newMembership);
-  db.logAudit(tenantReq.actorName, 'MEMBER_INVITED', 'Membership', newMembership.id, `Invited ${email} with role '${role}'`);
-  res.status(201).json(newMembership);
+app.post('/api/workspaces/:id/invitations', requireRoles('owner', 'admin'), (req: Request, res: Response) => {
+  return res.status(501).json({ error: 'Invitations are unavailable until Supabase invitation delivery is configured.' });
 });
 
 // --- Business Profile ---
@@ -73,14 +175,14 @@ app.get('/api/profile', (req: Request, res: Response) => {
   res.json(db.getBusinessProfile(tenantReq.tenantId));
 });
 
-app.put('/api/profile', (req: Request, res: Response) => {
+app.put('/api/profile', requireRoles('owner', 'admin'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const updated = db.updateBusinessProfile(tenantReq.tenantId, req.body);
   db.logAudit(tenantReq.actorName, 'PROFILE_UPDATED', 'BusinessProfile', updated.id, 'Updated profile metadata');
   res.json(updated);
 });
 
-app.put('/api/profile/scoring', (req: Request, res: Response) => {
+app.put('/api/profile/scoring', requireRoles('owner', 'admin', 'manager'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { scoring_weights } = req.body;
   if (!scoring_weights) return res.status(400).json({ error: 'scoring_weights required' });
@@ -95,46 +197,12 @@ app.get('/api/companies', (_req: Request, res: Response) => {
   res.json(db.getCompanies());
 });
 
-app.post('/api/companies/:id/save', (req: Request, res: Response) => {
-  const { is_saved } = req.body;
-  const company = db.saveCompany(req.params.id, is_saved ?? true);
-  if (!company) return res.status(404).json({ error: 'Company not found' });
-  res.json(company);
+app.post('/api/companies/:id/save', (_req: Request, res: Response) => {
+  return res.status(501).json({ error: 'Workspace-specific company saves are not implemented yet.' });
 });
 
-app.post('/api/companies/:id/enrich', (req: Request, res: Response) => {
-  const tenantReq = req as TenantRequest;
-  const cost = 2;
-  const balance = db.getCreditBalance(tenantReq.tenantId);
-
-  if (balance < cost) {
-    return res.status(402).json({ error: `Insufficient credits. Required: ${cost}, Available: ${balance}` });
-  }
-
-  // Reserve credits
-  const reserveTx: CreditTransaction = {
-    id: `tx-res-${Date.now()}`,
-    tenant_id: tenantReq.tenantId,
-    transaction_type: 'reservation',
-    amount: -cost,
-    balance_after: balance - cost,
-    description: `Credit reservation: Registry enrichment for #${req.params.id}`,
-    reference_type: 'company_enrichment',
-    reference_id: req.params.id,
-    created_at: new Date().toISOString(),
-  };
-  db.addCreditTransaction(reserveTx);
-
-  // Spawn background job
-  const job = db.createBackgroundJob(tenantReq.tenantId, 'company_enrichment', { company_id: req.params.id }, cost);
-  worker.processJobAsync(job.id);
-
-  res.status(202).json({
-    message: 'Enrichment job queued successfully',
-    job_id: job.id,
-    status: job.status,
-    credit_reserved: cost,
-  });
+app.post('/api/companies/:id/enrich', (_req: Request, res: Response) => {
+  return res.status(501).json({ error: 'Company enrichment is unavailable until a licensed data provider is connected.' });
 });
 
 // --- Contacts & Directory ---
@@ -152,40 +220,12 @@ app.get('/api/tenders', (_req: Request, res: Response) => {
 });
 
 // Analyst Tender Curation Intake Endpoint (Deficit 3 Fix)
-app.post('/api/tenders/intake', (req: Request, res: Response) => {
-  const tenantReq = req as TenantRequest;
-  const { notice_reference, title, buyer_name, procurement_category, published_at, deadline_at, scope_summary, eligibility_summary, estimated_budget_usd, source_portal, source_url, industry_id } = req.body;
-
-  if (!notice_reference || !title || !buyer_name || !deadline_at) {
-    return res.status(400).json({ error: 'Missing mandatory tender fields (reference, title, buyer, deadline)' });
-  }
-
-  const notice: ProcurementNotice = {
-    id: `proc-intake-${Date.now()}`,
-    notice_reference: notice_reference.trim(),
-    title: title.trim(),
-    buyer_company_id: 'comp-curated',
-    buyer_name: buyer_name.trim(),
-    industry_id: industry_id || 'oil_and_gas',
-    procurement_category: procurement_category || 'General Procurement',
-    published_at: published_at || new Date().toISOString(),
-    deadline_at: deadline_at,
-    status: 'open',
-    scope_summary: scope_summary || '',
-    eligibility_summary: eligibility_summary || '',
-    estimated_budget_usd: estimated_budget_usd ? Number(estimated_budget_usd) : undefined,
-    source_portal: source_portal || 'NipeX Portal',
-    source_url: source_url || 'https://nipex-ng.com/tenders',
-    is_monitored: true,
-  };
-
-  db.addProcurementNotice(notice);
-  db.logAudit(tenantReq.actorName, 'TENDER_CURATED', 'ProcurementNotice', notice.id, `Analyst intake: published tender ${notice.notice_reference}`);
-  res.status(201).json(notice);
+app.post('/api/tenders/intake', (_req: Request, res: Response) => {
+  return res.status(501).json({ error: 'Tender intake is paused until curator identities and provenance review are configured.' });
 });
 
 // --- Asynchronous AI Research & Job Runner (Deficit 2 Fix) ---
-app.post('/api/jobs/research', (req: Request, res: Response) => {
+app.post('/api/jobs/research', requireRoles('owner', 'admin', 'manager', 'member'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { subject_name, subject_type, question, industry, offerings, sources } = req.body;
 
@@ -237,7 +277,8 @@ app.post('/api/jobs/research', (req: Request, res: Response) => {
 });
 
 app.get('/api/jobs/:id', (req: Request, res: Response) => {
-  const job = db.getBackgroundJob(req.params.id);
+  const tenantReq = req as TenantRequest;
+  const job = db.getBackgroundJob(req.params.id, tenantReq.tenantId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json(job);
 });
@@ -253,9 +294,12 @@ app.get('/api/crm/leads', (req: Request, res: Response) => {
   res.json(db.getCrmLeads(tenantReq.tenantId));
 });
 
-app.post('/api/crm/leads', (req: Request, res: Response) => {
+app.post('/api/crm/leads', requireRoles('owner', 'admin', 'manager', 'member'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { company_id, company_name, contact_id, contact_name, stage } = req.body;
+  if (!company_id || !company_name || !db.getCompany(company_id)) {
+    return res.status(400).json({ error: 'A valid company_id and company_name are required.' });
+  }
 
   const lead: CrmLead = {
     id: `lead-${Date.now()}`,
@@ -291,12 +335,12 @@ app.post('/api/crm/leads', (req: Request, res: Response) => {
   res.status(201).json(lead);
 });
 
-app.patch('/api/crm/leads/:id/stage', (req: Request, res: Response) => {
+app.patch('/api/crm/leads/:id/stage', requireRoles('owner', 'admin', 'manager', 'member'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { stage } = req.body;
   if (!stage) return res.status(400).json({ error: 'stage required' });
 
-  const lead = db.updateCrmLead(req.params.id, { stage });
+  const lead = db.updateCrmLead(req.params.id, tenantReq.tenantId, { stage });
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
   const act: Activity = {
@@ -315,13 +359,17 @@ app.patch('/api/crm/leads/:id/stage', (req: Request, res: Response) => {
 });
 
 // Tasks & Activities
-app.get('/api/crm/tasks', (_req: Request, res: Response) => {
-  res.json(db.getTasks());
+app.get('/api/crm/tasks', (req: Request, res: Response) => {
+  const tenantReq = req as TenantRequest;
+  res.json(db.getTasks(tenantReq.tenantId));
 });
 
-app.post('/api/crm/tasks', (req: Request, res: Response) => {
+app.post('/api/crm/tasks', requireRoles('owner', 'admin', 'manager', 'member'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { lead_id, company_name, title, due_at, priority } = req.body;
+  if (!db.getCrmLeads(tenantReq.tenantId).some((lead) => lead.id === lead_id)) {
+    return res.status(404).json({ error: 'Lead not found in this workspace.' });
+  }
   const task: Task = {
     id: `task-${Date.now()}`,
     lead_id,
@@ -336,19 +384,24 @@ app.post('/api/crm/tasks', (req: Request, res: Response) => {
   res.status(201).json(task);
 });
 
-app.patch('/api/crm/tasks/:id/toggle', (req: Request, res: Response) => {
-  const task = db.toggleTask(req.params.id);
+app.patch('/api/crm/tasks/:id/toggle', requireRoles('owner', 'admin', 'manager', 'member'), (req: Request, res: Response) => {
+  const tenantReq = req as TenantRequest;
+  const task = db.toggleTask(req.params.id, tenantReq.tenantId);
   if (!task) return res.status(404).json({ error: 'Task not found' });
   res.json(task);
 });
 
 app.get('/api/crm/activities', (req: Request, res: Response) => {
-  res.json(db.getActivities(req.query.lead_id as string));
+  const tenantReq = req as TenantRequest;
+  res.json(db.getActivities(tenantReq.tenantId, req.query.lead_id as string));
 });
 
-app.post('/api/crm/activities', (req: Request, res: Response) => {
+app.post('/api/crm/activities', requireRoles('owner', 'admin', 'manager', 'member'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { lead_id, activity_type, subject, body } = req.body;
+  if (!db.getCrmLeads(tenantReq.tenantId).some((lead) => lead.id === lead_id)) {
+    return res.status(404).json({ error: 'Lead not found in this workspace.' });
+  }
   const act: Activity = {
     id: `act-${Date.now()}`,
     lead_id,
@@ -368,9 +421,12 @@ app.get('/api/outreach/drafts', (req: Request, res: Response) => {
   res.json(db.getOutreachDrafts(tenantReq.tenantId));
 });
 
-app.post('/api/outreach/draft', (req: Request, res: Response) => {
+app.post('/api/outreach/draft', requireRoles('owner', 'admin', 'manager', 'member'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { lead_id, company_name, contact_id, contact_name, contact_email, subject, body, evidence_citations, unknown_warnings } = req.body;
+  if (!db.getCrmLeads(tenantReq.tenantId).some((lead) => lead.id === lead_id)) {
+    return res.status(404).json({ error: 'Lead not found in this workspace.' });
+  }
 
   // Check suppression list before drafting
   const isSuppressed = db.isSuppressed(contact_email);
@@ -397,9 +453,11 @@ app.post('/api/outreach/draft', (req: Request, res: Response) => {
   res.status(201).json(draft);
 });
 
-app.post('/api/outreach/:id/approve', (req: Request, res: Response) => {
+app.post('/api/outreach/:id/approve', requireRoles('owner', 'admin', 'manager'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
-  const draft = db.updateOutreachDraft(req.params.id, {
+  const existingDraft = db.getOutreachDrafts(tenantReq.tenantId).find((item) => item.id === req.params.id);
+  if (!existingDraft) return res.status(404).json({ error: 'Draft not found in this workspace.' });
+  const draft = db.updateOutreachDraft(req.params.id, tenantReq.tenantId, {
     status: 'approved',
     approved_by: tenantReq.actorName,
     approved_at: new Date().toISOString(),
@@ -410,45 +468,15 @@ app.post('/api/outreach/:id/approve', (req: Request, res: Response) => {
 });
 
 app.post('/api/outreach/:id/send', (req: Request, res: Response) => {
-  const tenantReq = req as TenantRequest;
-  const draft = db.getOutreachDrafts(tenantReq.tenantId).find((d) => d.id === req.params.id);
-  if (!draft) return res.status(404).json({ error: 'Draft not found' });
-
-  if (draft.status !== 'approved') {
-    return res.status(403).json({ error: 'NDPA Governance Violation: Human approval required before sending.' });
-  }
-
-  // Immediate suppression check prior to send
-  if (db.isSuppressed(draft.contact_email)) {
-    return res.status(403).json({ error: `Outreach blocked: Contact ${draft.contact_email} has opted out or is suppressed.` });
-  }
-
-  const updated = db.updateOutreachDraft(draft.id, {
-    status: 'sent',
-    sent_at: new Date().toISOString(),
-  });
-
-  const act: Activity = {
-    id: `act-${Date.now()}`,
-    lead_id: draft.lead_id,
-    activity_type: 'email',
-    subject: `Outreach Sent: ${draft.subject}`,
-    body: `Dispatched approved communication to ${draft.contact_email}`,
-    occurred_at: new Date().toISOString(),
-    created_by_user_name: tenantReq.actorName,
-  };
-  db.addActivity(act);
-  db.logAudit(tenantReq.actorName, 'OUTREACH_DISPATCHED', 'OutreachDraft', draft.id, `Dispatched message to ${draft.contact_email}`);
-
-  res.json({ success: true, draft: updated });
+  return res.status(501).json({ error: 'Email delivery is not configured; this action will not mark a draft as sent.' });
 });
 
 // Privacy & Suppression Registry
-app.get('/api/privacy/suppression', (_req: Request, res: Response) => {
+app.get('/api/privacy/suppression', requireRoles('owner', 'admin'), (_req: Request, res: Response) => {
   res.json(db.getSuppressionRecords());
 });
 
-app.post('/api/privacy/suppress', (req: Request, res: Response) => {
+app.post('/api/privacy/suppress', requireRoles('owner', 'admin', 'manager'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { channel_type, identifier, reason } = req.body;
   if (!identifier) return res.status(400).json({ error: 'identifier required' });
@@ -469,49 +497,17 @@ app.get('/api/credits/transactions', (req: Request, res: Response) => {
   res.json(db.getCreditTransactions(tenantReq.tenantId));
 });
 
-app.post('/api/credits/topup', (req: Request, res: Response) => {
-  const tenantReq = req as TenantRequest;
-  const { amount, description } = req.body;
-  const amt = Number(amount) || 100;
-  const current = db.getCreditBalance(tenantReq.tenantId);
-
-  const tx: CreditTransaction = {
-    id: `tx-top-${Date.now()}`,
-    tenant_id: tenantReq.tenantId,
-    transaction_type: 'top_up',
-    amount: amt,
-    balance_after: current + amt,
-    description: description || `Credit Top-Up (${amt} credits)`,
-    reference_type: 'top_up_purchase',
-    created_at: new Date().toISOString(),
-  };
-  db.addCreditTransaction(tx);
-  db.logAudit(tenantReq.actorName, 'CREDITS_TOPPED_UP', 'CreditAccount', tenantReq.tenantId, `Added ${amt} credits`);
-  res.status(201).json({ balance: tx.balance_after, transaction: tx });
+app.post('/api/credits/topup', (_req: Request, res: Response) => {
+  return res.status(501).json({ error: 'Credit purchases are unavailable until payment processing is configured.' });
 });
 
 // --- Platform Admin & Audit ---
 app.get('/api/admin/audit-logs', (_req: Request, res: Response) => {
-  res.json(db.getAuditLogs());
+  return res.status(501).json({ error: 'Audit logs are unavailable until tenant-scoped audit storage is implemented.' });
 });
 
 app.get('/api/admin/system-status', (_req: Request, res: Response) => {
-  res.json({
-    tenants_count: db.getTenants().length,
-    canonical_companies_count: db.getCompanies().length,
-    suppression_count: db.getSuppressionRecords().length,
-    queues: [
-      { name: 'ai_research_workers', workers: 4, status: 'active', active_jobs: 0 },
-      { name: 'nipex_tender_sync', workers: 2, status: 'active', active_jobs: 0 },
-      { name: 'enrichment_metering_queue', workers: 2, status: 'active', active_jobs: 0 },
-    ],
-    adapters: [
-      { name: 'NipeX JQS Tender Scraper', latencyMs: 240, status: 'nominal' },
-      { name: 'Apollo Commercial Adapter', latencyMs: 180, status: 'nominal' },
-      { name: 'CAC Public Registry Connector', latencyMs: 310, status: 'nominal' },
-      { name: 'Google GenAI (gemini-2.5-flash)', latencyMs: 420, status: 'nominal' },
-    ],
-  });
+  return res.status(501).json({ error: 'System status is unavailable until provider health checks are implemented.' });
 });
 
 async function startServer() {

@@ -94,19 +94,16 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
     }
 
     setIsRunning(true);
-    setRunStage('Querying verified regulatory registries and official notices...');
+    setRunStage('Submitting research job...');
 
     try {
-      setTimeout(() => setRunStage('Extracting procurement signals and asset turnaround dates...'), 400);
-      setTimeout(() => setRunStage('Cross-referencing prospect needs against Jeneconk Business Profile...'), 800);
-      setTimeout(() => setRunStage('Auditing verified evidence claims & flagging critical unknowns...'), 1200);
-
       const job = await runResearchJob(
         subjectType,
         selectedCompany?.id || `subj-${Date.now()}`,
         subjectName,
         researchPrompt,
-        selectedSources
+        selectedSources,
+        (_progress, status) => setRunStage(status)
       );
 
       setActiveJobResult(job);
@@ -124,10 +121,10 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
           <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
-          Evidence-Backed AI Research Workspace
+          AI-Assisted Research Workspace
         </h1>
         <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-          Conduct deep, grounded commercial intelligence investigations. Every factual claim is bound to a verified source, and missing information is explicitly flagged as unknown rather than hallucinated.
+          Generate a preliminary analysis with AI. This prototype does not retrieve or verify live sources; confirm facts against primary sources before relying on them.
         </p>
       </div>
 
@@ -222,10 +219,10 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             />
           </div>
 
-          {/* Source Scopes */}
+          {/* Requested source categories (retrieval is not implemented) */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              4. Permitted Data Scopes & Provenance
+              4. Source Categories (not queried in this prototype)
             </label>
             <div className="space-y-2 text-xs text-slate-300">
               {[
@@ -280,11 +277,11 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             <div className="text-[11px] text-slate-400 space-y-2">
               <div className="flex items-start gap-2">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                <span>Anti-Hallucination Guardrails: Unverified facts are explicitly flagged as critical unknowns.</span>
+                <span>Source retrieval is not connected. AI output is preliminary and must be verified.</span>
               </div>
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                <span>Idempotent execution: Failed jobs release reservations automatically.</span>
+                <span>Failed jobs release reserved credits. Safe retry/idempotency is not implemented yet.</span>
               </div>
             </div>
           </div>
@@ -378,9 +375,12 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Procurement & Operational Signals
+                Procurement & Operational Signals (source retrieval unavailable)
               </h4>
               <ul className="space-y-2 text-xs text-slate-300">
+                {activeJobResult.result.procurement_signals.length === 0 && (
+                  <li className="text-slate-500">No source-verified signals. Source retrieval is not connected.</li>
+                )}
                 {activeJobResult.result.procurement_signals.map((sig, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="text-amber-400 font-bold">✓</span>
@@ -392,7 +392,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
 
             <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Identified Decision-Makers
+                Suggested Roles to Investigate
               </h4>
               <div className="space-y-2">
                 {activeJobResult.result.key_decision_makers.map((dm, i) => (
@@ -406,12 +406,17 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             </div>
           </div>
 
-          {/* Section 4: Traceable Verified Facts */}
+          {/* Section 4: Source-backed facts (empty until source retrieval exists) */}
           <div className="space-y-2">
             <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Traceable Verified Claims (Source Backed)
+              Source-Verified Facts
             </h4>
             <div className="space-y-2">
+              {activeJobResult.result.known_facts.length === 0 && (
+                <p className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-400">
+                  None. This prototype has not retrieved source documents for this analysis.
+                </p>
+              )}
               {activeJobResult.result.known_facts.map((fact, i) => (
                 <div
                   key={i}
@@ -443,7 +448,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               Critical Unknowns & Required Verification
             </h4>
             <p className="text-xs text-rose-200">
-              The following operational facts could not be authoritatively corroborated and should be validated prior to commercial commitment:
+              AI output is not source-verified. Confirm operational facts against primary sources before relying on them:
             </p>
             <ul className="space-y-1 text-xs text-rose-100 list-disc list-inside">
               {activeJobResult.result.critical_unknowns.map((unk, i) => (

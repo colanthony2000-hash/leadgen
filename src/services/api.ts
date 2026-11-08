@@ -15,23 +15,28 @@ import {
   AuditLogEntry,
   ScoringWeights,
   RoleCode,
-  PipelineStage
+  PipelineStage,
+  User
 } from '../types';
 
 export class ApiClient {
-  private tenantId: string = 'tenant-jeneconk-hq';
-  private actorName: string = 'Dr. Kenneth Adebayo';
+  private tenantId: string = import.meta.env.VITE_PILOT_TENANT_ID || 'tenant-jeneconk-hq';
+  private accessToken: string | null = null;
 
-  public setTenantContext(tenantId: string, actorName: string) {
+  public setAccessToken(accessToken: string | null) {
+    this.accessToken = accessToken;
+  }
+
+  public setTenantContext(tenantId: string, _actorName?: string) {
     this.tenantId = tenantId;
-    this.actorName = actorName;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const accessToken = this.accessToken;
     const headers = {
       'Content-Type': 'application/json',
       'X-Tenant-Id': this.tenantId,
-      'X-Actor-Name': this.actorName,
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(options.headers || {}),
     };
 
@@ -44,6 +49,10 @@ export class ApiClient {
   }
 
   // Workspaces & Members
+  async getMe(): Promise<{ user: User; tenants: Tenant[]; memberships: Membership[] }> {
+    return this.request('/api/me');
+  }
+
   async getWorkspaces(): Promise<Tenant[]> {
     return this.request<Tenant[]>('/api/workspaces');
   }
@@ -125,6 +134,7 @@ export class ApiClient {
     industry: string;
     offerings: any[];
     sources: string[];
+    subject_id?: string;
   }): Promise<{ job_id: string; status: string; credit_reserved: number }> {
     return this.request('/api/jobs/research', {
       method: 'POST',
@@ -139,7 +149,7 @@ export class ApiClient {
   async pollJobUntilComplete(
     jobId: string,
     onProgress?: (progressPct: number, status: string) => void,
-    timeoutMs: number = 30000
+    timeoutMs: number = 120000
   ): Promise<any> {
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
