@@ -48,6 +48,7 @@ export interface BusinessOffering {
   description: string;
   category_code: string;
   target_industry: IndustryCode;
+  source_url?: string;
 }
 
 export interface BusinessCertification {
@@ -82,6 +83,7 @@ export interface BusinessProspectMatch {
 export interface BusinessProfileResearchDraft {
   company_name: string;
   website: string;
+  service_websites: string[];
   country_code: string;
   business_summary: string;
   target_regions: string[];
@@ -95,6 +97,7 @@ export interface CompanyProfile {
   id: string;
   company_name: string;
   website: string;
+  service_websites?: string[];
   country_code: string;
   business_summary: string;
   target_regions: string[];
@@ -133,6 +136,7 @@ export interface BusinessProfile {
   tenant_id: string;
   company_name: string;
   website: string;
+  service_websites?: string[];
   country_code: string;
   business_summary: string;
   target_regions: string[];

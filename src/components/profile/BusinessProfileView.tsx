@@ -5,7 +5,7 @@ import { api } from '../../services/api';
 import { BusinessProfileResearchDraft, BusinessProspectMatch, CompanyProfile, CompanyResearchRecord, IndustryCode } from '../../types';
 
 const emptyDraft = (profile: ReturnType<typeof useApp>['businessProfile']): BusinessProfileResearchDraft => ({
-  company_name: profile.company_name, website: profile.website, country_code: profile.country_code,
+  company_name: profile.company_name, website: profile.website, service_websites: profile.service_websites || [], country_code: profile.country_code,
   business_summary: profile.business_summary, target_regions: profile.target_regions,
   target_industries: profile.target_industries, offerings: profile.offerings,
   certifications: profile.certifications, sources: profile.profile_sources || [],
@@ -20,6 +20,7 @@ export const BusinessProfileView: React.FC = () => {
   const { businessProfile, updateBusinessProfile, isDemoMode } = useApp();
   const [website, setWebsite] = useState(businessProfile.website || '');
   const [companyName, setCompanyName] = useState(businessProfile.company_name || '');
+  const [serviceWebsitesText, setServiceWebsitesText] = useState((businessProfile.service_websites || []).join('\n'));
   const [context, setContext] = useState('');
   const [draft, setDraft] = useState<BusinessProfileResearchDraft | null>(null);
   const [matches, setMatches] = useState<BusinessProspectMatch[]>([]);
@@ -37,8 +38,8 @@ export const BusinessProfileView: React.FC = () => {
     event.preventDefault(); setBusy('research'); setMessage(''); setDraft(null); setMatches([]);
     try {
       const result = isDemoMode
-        ? { ...emptyDraft(businessProfile), company_name: companyName || businessProfile.company_name, website: website || businessProfile.website, business_summary: `${businessProfile.business_summary}\n\nDemo preview: add a Gemini API key and sign in to run live web research.`, sources: [] }
-        : await api.researchBusinessProfile({ website, company_name: companyName, context });
+        ? { ...emptyDraft(businessProfile), company_name: companyName || businessProfile.company_name, website: website || businessProfile.website, service_websites: serviceWebsitesText.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean), business_summary: `${businessProfile.business_summary}\n\nDemo preview: add a Gemini API key and sign in to run live web research.`, sources: [] }
+        : await api.researchBusinessProfile({ website, service_websites: serviceWebsitesText.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean), company_name: companyName, context });
       setDraft(result); setMessage(result.sources.length ? `Draft researched with ${result.sources.length} web sources. Review every claim before approval.` : 'Draft ready. Review the details and sources before approval.');
     } catch (error: any) { setMessage(error.message || 'Company research failed.'); }
     finally { setBusy(''); }
@@ -52,6 +53,7 @@ export const BusinessProfileView: React.FC = () => {
         ? [...businessProfile.company_profiles]
         : [{
             id: businessProfile.id, company_name: businessProfile.company_name, website: businessProfile.website, country_code: businessProfile.country_code,
+            service_websites: businessProfile.service_websites || [],
             business_summary: businessProfile.business_summary, target_regions: businessProfile.target_regions, target_industries: businessProfile.target_industries,
             offerings: businessProfile.offerings, certifications: businessProfile.certifications, profile_sources: businessProfile.profile_sources || [],
             profile_approved_at: businessProfile.profile_approved_at || '', approved_prospects: businessProfile.approved_prospects || [], updated_at: businessProfile.updated_at,
@@ -60,6 +62,7 @@ export const BusinessProfileView: React.FC = () => {
       const approvedAt = new Date().toISOString();
       const savedCompany: CompanyProfile = {
         id: profileId, company_name: draft.company_name, website: draft.website, country_code: draft.country_code,
+        service_websites: draft.service_websites,
         business_summary: draft.business_summary, target_regions: draft.target_regions, target_industries: draft.target_industries,
         offerings: draft.offerings, certifications: draft.certifications, profile_sources: draft.sources, profile_approved_at: approvedAt,
         approved_prospects: profiles.find((item) => item.id === profileId)?.approved_prospects || [], updated_at: approvedAt,
@@ -67,7 +70,7 @@ export const BusinessProfileView: React.FC = () => {
       const nextProfiles = [savedCompany, ...profiles.filter((item) => item.id !== profileId)];
       await updateBusinessProfile({
         id: profileId,
-        company_name: draft.company_name, website: draft.website, country_code: draft.country_code,
+        company_name: draft.company_name, website: draft.website, service_websites: draft.service_websites, country_code: draft.country_code,
         business_summary: draft.business_summary, target_regions: draft.target_regions,
         target_industries: draft.target_industries, offerings: draft.offerings,
         certifications: draft.certifications, profile_sources: draft.sources,
@@ -118,6 +121,7 @@ export const BusinessProfileView: React.FC = () => {
 
   const savedProfiles: CompanyProfile[] = businessProfile.company_profiles?.length ? businessProfile.company_profiles : [{
     id: businessProfile.id, company_name: businessProfile.company_name, website: businessProfile.website, country_code: businessProfile.country_code,
+    service_websites: businessProfile.service_websites || [],
     business_summary: businessProfile.business_summary, target_regions: businessProfile.target_regions, target_industries: businessProfile.target_industries,
     offerings: businessProfile.offerings, certifications: businessProfile.certifications, profile_sources: businessProfile.profile_sources || [],
     profile_approved_at: businessProfile.profile_approved_at || '', approved_prospects: businessProfile.approved_prospects || [], updated_at: businessProfile.updated_at,
@@ -125,11 +129,11 @@ export const BusinessProfileView: React.FC = () => {
 
   const activateProfile = async (profile: CompanyProfile) => {
     try {
-      await updateBusinessProfile({ id: profile.id, company_name: profile.company_name, website: profile.website, country_code: profile.country_code,
+      await updateBusinessProfile({ id: profile.id, company_name: profile.company_name, website: profile.website, service_websites: profile.service_websites || [], country_code: profile.country_code,
         business_summary: profile.business_summary, target_regions: profile.target_regions, target_industries: profile.target_industries,
         offerings: profile.offerings, certifications: profile.certifications, profile_sources: profile.profile_sources,
         profile_approved_at: profile.profile_approved_at, approved_prospects: profile.approved_prospects });
-      setCompanyName(profile.company_name); setWebsite(profile.website); setEditingProfileId(profile.id); setMatches([]); setDraft(null);
+      setCompanyName(profile.company_name); setWebsite(profile.website); setServiceWebsitesText((profile.service_websites || []).join('\n')); setEditingProfileId(profile.id); setMatches([]); setDraft(null);
       setMessage(`${profile.company_name} is now the active company profile for matching.`);
     } catch (error: any) { setMessage(error.message || 'Could not switch active profile.'); }
   };
@@ -150,17 +154,17 @@ export const BusinessProfileView: React.FC = () => {
     <header>
       <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">Company discovery</p>
       <h1 className="mt-1 text-2xl font-bold text-white">Build your company profile, then find potential buyers</h1>
-      <p className="mt-2 max-w-3xl text-sm text-slate-400">Start with a website or company name. AI uses Google Search to draft your services, markets, and public details. A person reviews and approves the profile before prospect search is enabled.</p>
+      <p className="mt-2 max-w-3xl text-sm text-slate-400">Create one profile for your company, including its main website and service subdomains. AI consolidates the business lines into one capability profile for matching. A person reviews and approves it before prospect search is enabled.</p>
     </header>
 
     <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">Your company profiles ({savedProfiles.length})</h2><p className="mt-1 text-xs text-slate-400">Create a separate profile for each business line, brand, or service subdomain. Matching uses the active approved profile.</p></div>
-        <button type="button" onClick={() => { setEditingProfileId(null); setCompanyName(''); setWebsite(''); setContext(''); setDraft(null); setMessage('Enter a website or name to start a new company profile.'); }} className="min-h-10 rounded-lg border border-amber-400/40 px-3 py-2 text-sm font-medium text-amber-200">+ Create company profile</button></div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{savedProfiles.map((profile) => <button type="button" key={profile.id} onClick={() => activateProfile(profile)} className={`min-w-0 rounded-xl border p-4 text-left ${businessProfile.id === profile.id ? 'border-amber-400/60 bg-amber-400/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'}`}><span className="block truncate font-semibold text-white">{profile.company_name || 'Untitled company'}</span><span className="mt-1 block truncate text-xs text-slate-400">{profile.website || 'No website'} · {profile.offerings.length} offerings</span><span className="mt-2 inline-block rounded-full bg-slate-800 px-2 py-1 text-[10px] text-slate-300">{profile.profile_approved_at ? 'Approved' : 'Needs review'}</span></button>)}</div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">Your company profiles ({savedProfiles.length})</h2><p className="mt-1 text-xs text-slate-400">Use one profile for your company and its service subdomains. Create another profile only for a separate company. Matching uses the active approved profile.</p></div>
+        <button type="button" onClick={() => { setEditingProfileId(null); setCompanyName(''); setWebsite(''); setServiceWebsitesText(''); setContext(''); setDraft(null); setMessage('Enter the company website and any service subdomains to start a new profile.'); }} className="min-h-10 rounded-lg border border-amber-400/40 px-3 py-2 text-sm font-medium text-amber-200">+ Create company profile</button></div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{savedProfiles.map((profile) => <button type="button" key={profile.id} onClick={() => activateProfile(profile)} className={`min-w-0 rounded-xl border p-4 text-left ${businessProfile.id === profile.id ? 'border-amber-400/60 bg-amber-400/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'}`}><span className="block truncate font-semibold text-white">{profile.company_name || 'Untitled company'}</span><span className="mt-1 block truncate text-xs text-slate-400">{profile.website || 'No website'} · {(profile.service_websites || []).length} service sites · {profile.offerings.length} offerings</span><span className="mt-2 inline-block rounded-full bg-slate-800 px-2 py-1 text-[10px] text-slate-300">{profile.profile_approved_at ? 'Approved' : 'Needs review'}</span></button>)}</div>
     </section>
 
     <form onSubmit={runResearch} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
-      <h2 className="font-semibold text-white">1. Find your public company details</h2>
+      <h2 className="font-semibold text-white">1. Add your company websites</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1.5 text-xs text-slate-300">Company website
           <input className={fieldClass} type="url" placeholder="https://example.com" value={website} onChange={(e) => setWebsite(e.target.value)} />
@@ -169,6 +173,9 @@ export const BusinessProfileView: React.FC = () => {
           <input className={fieldClass} placeholder="Registered or trading name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
         </label>
       </div>
+      <label className="block space-y-1.5 text-xs text-slate-300">Service subdomains or additional company websites (one URL per line)
+        <textarea className={fieldClass} rows={3} placeholder={'https://services.example.com\nhttps://products.example.com'} value={serviceWebsitesText} onChange={(e) => setServiceWebsitesText(e.target.value)} />
+      </label>
       <label className="block space-y-1.5 text-xs text-slate-300">Anything the search should know? (optional)
         <textarea className={fieldClass} rows={2} placeholder="For example: we operate across Nigeria and provide subsea inspection services." value={context} onChange={(e) => setContext(e.target.value)} />
       </label>
@@ -179,11 +186,12 @@ export const BusinessProfileView: React.FC = () => {
     </form>
 
     {draft && <section className="space-y-5 rounded-2xl border border-amber-500/30 bg-slate-900/60 p-5 sm:p-6">
-      <div><h2 className="font-semibold text-white">2. Review and correct the profile draft</h2><p className="mt-1 text-xs text-slate-400">AI findings are suggestions. Edit anything inaccurate; only approve details you can stand behind.</p></div>
+      <div><h2 className="font-semibold text-white">2. Review your consolidated company profile</h2><p className="mt-1 text-xs text-slate-400">AI findings from your main site and subdomains are suggestions. Edit anything inaccurate; only approve details you can stand behind.</p></div>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1.5 text-xs text-slate-300">Company name<input className={fieldClass} value={draft.company_name} onChange={(e) => updateDraft({ company_name: e.target.value })} /></label>
         <label className="space-y-1.5 text-xs text-slate-300">Website<input className={fieldClass} value={draft.website} onChange={(e) => updateDraft({ website: e.target.value })} /></label>
       </div>
+      <label className="block space-y-1.5 text-xs text-slate-300">Included service subdomains or websites<textarea className={fieldClass} rows={3} value={draft.service_websites.join('\n')} onChange={(e) => updateDraft({ service_websites: e.target.value.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean) })} /></label>
       <label className="block space-y-1.5 text-xs text-slate-300">What the company does<textarea className={fieldClass} rows={4} value={draft.business_summary} onChange={(e) => updateDraft({ business_summary: e.target.value })} /></label>
       <div className="space-y-2"><h3 className="text-sm font-medium text-white">Services, products, and capabilities ({draft.offerings.length})</h3>
         {draft.offerings.map((offering, index) => <div key={offering.id} className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:grid-cols-[1fr_2fr_auto]">

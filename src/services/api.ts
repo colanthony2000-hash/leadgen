@@ -83,7 +83,7 @@ export class ApiClient {
     });
   }
 
-  async researchBusinessProfile(input: { website?: string; company_name?: string; context?: string }): Promise<BusinessProfileResearchDraft> {
+  async researchBusinessProfile(input: { website?: string; service_websites?: string[]; company_name?: string; context?: string }): Promise<BusinessProfileResearchDraft> {
     return this.request('/api/profile/research', { method: 'POST', body: JSON.stringify(input) });
   }
 

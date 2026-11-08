@@ -49,18 +49,22 @@ export class BackgroundJobWorker {
     return { data, sources: [...new Map(sources.map((source) => [source.url, source])).values()] };
   }
 
-  public async researchBusinessProfile(input: { website?: string; company_name?: string; context?: string }): Promise<BusinessProfileResearchDraft> {
-    const website = String(input.website || '').trim();
+  public async researchBusinessProfile(input: { website?: string; service_websites?: string[]; company_name?: string; context?: string }): Promise<BusinessProfileResearchDraft> {
+    const submittedSites = [input.website, ...(input.service_websites || [])].map((value) => String(value || '').trim()).filter(Boolean);
+    const serviceWebsites = [...new Set(submittedSites)];
+    const website = serviceWebsites[0] || '';
     const companyName = String(input.company_name || '').trim();
     if (!website && !companyName) throw new Error('Enter a company website or company name to begin.');
-    if (website && !/^https?:\/\//i.test(website)) throw new Error('Enter a valid website beginning with https:// or http://.');
-    const { data, sources } = await this.groundedJson(`Research this company using Google Search. Company website: ${website || 'not supplied'}. Company name: ${companyName || 'identify from website'}. Additional context: ${String(input.context || '').slice(0, 1200) || 'none'}.
-Use the official website and reliable public sources. Extract the company identity, what it actually sells or provides, certifications only when explicitly evidenced, countries/regions and industries it serves. Do not guess or invent facts. Keep unknown fields empty. Return JSON only with keys: company_name (string), website (string), country_code (ISO 3166-1 alpha-2 string or empty), business_summary (string), target_regions (string[]), target_industries (array using only oil_and_gas, education, digital_products), offerings (array of {name, description, offering_type (product/service/capability), category_code, target_industry}), certifications (array of {name, issuer, valid_from, valid_to, evidence_url}). Keep offerings to concrete services/products/capabilities supported by sources. Do not include source URLs in the JSON.`);
+    if (serviceWebsites.length > 25) throw new Error('Add up to 25 websites per company profile.');
+    if (serviceWebsites.some((site) => !/^https?:\/\//i.test(site))) throw new Error('Each service website must begin with https:// or http://.');
+    const { data, sources } = await this.groundedJson(`Research one company and combine the supplied corporate site and service subdomains into a single company profile. Company website and service subdomains: ${JSON.stringify(serviceWebsites)}. Company name: ${companyName || 'identify from the supplied company websites'}. Additional context: ${String(input.context || '').slice(0, 1200) || 'none'}.
+Visit/search across each supplied site and its pages. Extract the company identity and consolidate its different business lines, services, and products into one capability profile. Preserve which supplied site supports each offering when possible. Use reliable public sources. Certifications only when explicitly evidenced. Do not guess or invent facts; keep unknowns empty. Return JSON only with keys: company_name (string), website (primary company website string), country_code (ISO 3166-1 alpha-2 string or empty), business_summary (string), target_regions (string[]), target_industries (array using only oil_and_gas, education, digital_products), offerings (array of {name, description, offering_type (product/service/capability), category_code, target_industry, source_url}), certifications (array of {name, issuer, valid_from, valid_to, evidence_url}). For source_url/evidence_url, use only URLs available in search results. Do not include a separate company profile for each subdomain.`);
     const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products'];
     const offerings = Array.isArray(data.offerings) ? data.offerings.slice(0, 20).map((item: any, index: number) => ({
       id: `off-${Date.now()}-${index}`, name: String(item.name || '').slice(0, 160), description: String(item.description || '').slice(0, 800),
       offering_type: ['product', 'service', 'capability'].includes(item.offering_type) ? item.offering_type : 'service',
       category_code: String(item.category_code || 'general').slice(0, 80), target_industry: allowedIndustries.includes(item.target_industry) ? item.target_industry : 'digital_products',
+      ...(typeof item.source_url === 'string' && sources.some((source) => source.url === item.source_url) ? { source_url: item.source_url } : {}),
     })).filter((item: any) => item.name) : [];
     const certifications = Array.isArray(data.certifications) ? data.certifications.slice(0, 20).map((item: any, index: number) => ({
       id: `cert-${Date.now()}-${index}`, name: String(item.name || '').slice(0, 160), issuer: String(item.issuer || 'Not established'),
@@ -68,7 +72,7 @@ Use the official website and reliable public sources. Extract the company identi
       ...(typeof item.evidence_url === 'string' && sources.some((source) => source.url === item.evidence_url) ? { evidence_url: item.evidence_url } : {}),
     })).filter((item: any) => item.name) : [];
     return {
-      company_name: String(data.company_name || companyName || '').slice(0, 200), website: String(data.website || website).slice(0, 300),
+      company_name: String(data.company_name || companyName || '').slice(0, 200), website: website.slice(0, 300), service_websites: serviceWebsites.filter((site) => site !== website),
       country_code: String(data.country_code || '').slice(0, 2).toUpperCase(), business_summary: String(data.business_summary || '').slice(0, 2500),
       target_regions: Array.isArray(data.target_regions) ? data.target_regions.filter((value: unknown) => typeof value === 'string').slice(0, 30) : [],
       target_industries: Array.isArray(data.target_industries) ? data.target_industries.filter((value: unknown): value is IndustryCode => allowedIndustries.includes(value as IndustryCode)) : [],
@@ -77,7 +81,7 @@ Use the official website and reliable public sources. Extract the company identi
   }
 
   public async findBusinessProspects(profile: BusinessProfile): Promise<BusinessProspectMatch[]> {
-    const { data, sources } = await this.groundedJson(`Find up to 10 real organizations that may plausibly need or procure the following company's offerings. Search current public information using Google Search. Supplier: ${profile.company_name}; website: ${profile.website}; summary: ${profile.business_summary}; offerings: ${JSON.stringify(profile.offerings)}; target regions: ${JSON.stringify(profile.target_regions)}; target industries: ${JSON.stringify(profile.target_industries)}.
+    const { data, sources } = await this.groundedJson(`Find up to 10 real organizations that may plausibly need or procure the following company's offerings. Search current public information using Google Search. Supplier: ${profile.company_name}; primary website: ${profile.website}; service websites: ${JSON.stringify(profile.service_websites || [])}; summary: ${profile.business_summary}; offerings: ${JSON.stringify(profile.offerings)}; target regions: ${JSON.stringify(profile.target_regions)}; target industries: ${JSON.stringify(profile.target_industries)}.
 Recommend potential buyers, operators, institutions, or organizations based on evidence of relevant operations, projects, or procurement. Do not say they currently need or are buying unless a source establishes it; otherwise phrase as potential fit. Exclude the supplier itself. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products","company_type":"","location":"","description":"short evidence-based description","match_reason":"why the supplied offering could fit; distinguish inference from sourced fact","matched_offerings":["offering name"],"source_urls":["URL returned by Google Search"]}]}. source_urls must be copied exactly from Google Search results and support the candidate; if none support a candidate, omit it. Do not invent people, contact details, procurement, URLs, or facts. Return an empty list if no credible candidates are found.`);
     if (!Array.isArray(data.prospects)) throw new Error('AI prospect search returned an invalid response.');
     const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products'];

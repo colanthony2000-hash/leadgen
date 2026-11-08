@@ -186,6 +186,7 @@ app.post('/api/profile/research', requireRoles('owner', 'admin'), async (req: Re
   try {
     const draft = await worker.researchBusinessProfile({
       website: typeof req.body?.website === 'string' ? req.body.website : undefined,
+      service_websites: Array.isArray(req.body?.service_websites) ? req.body.service_websites.filter((value: unknown): value is string => typeof value === 'string').slice(0, 25) : undefined,
       company_name: typeof req.body?.company_name === 'string' ? req.body.company_name : undefined,
       context: typeof req.body?.context === 'string' ? req.body.context : undefined,
     });
