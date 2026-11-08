@@ -20,6 +20,7 @@ import { IndustryCode } from '../../types';
 interface AppHeaderProps {
   onOpenScoring: () => void;
   onOpenResearch: () => void;
+  onSubmitSearch: (query: string) => void;
   currentView: string;
   onToggleMobileSidebar?: () => void;
   onSignOut: () => void;
@@ -28,6 +29,7 @@ interface AppHeaderProps {
 export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenScoring,
   onOpenResearch,
+  onSubmitSearch,
   currentView,
   onToggleMobileSidebar,
   onSignOut,
@@ -50,6 +52,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState(100);
+
+  const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    if (query) onSubmitSearch(query);
+  };
 
   const industries: Array<{ id: IndustryCode | 'all'; label: string }> = [
     { id: 'all', label: 'All Sectors' },
@@ -165,16 +173,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         {/* Global Search Bar */}
-        <div className="relative w-full min-w-[220px] max-w-xs flex-1">
+        <form onSubmit={handleSearchSubmit} role="search" className="relative w-full min-w-[260px] max-w-sm flex-1">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search this workspace..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900/80 border border-slate-800 rounded-lg text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
+            aria-label="Search companies, contacts, and opportunities"
+            className="w-full pl-8 pr-[4.5rem] py-1.5 text-xs bg-slate-900/80 border border-slate-800 rounded-lg text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
           />
-        </div>
+          <button type="submit" disabled={!searchQuery.trim()} className="absolute right-1 top-1 bottom-1 rounded-md bg-amber-400 px-2 text-[11px] font-semibold text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50">
+            Search
+          </button>
+        </form>
       </div>
 
       <div className="order-3 flex w-full min-w-0 items-center gap-2 border-t border-slate-800/70 pt-2 lg:hidden">
@@ -188,7 +200,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <option key={industry.id} value={industry.id}>{industry.label}</option>
           ))}
         </select>
-        <div className="relative min-w-0 flex-1">
+        <form onSubmit={handleSearchSubmit} role="search" className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
             type="search"
@@ -196,9 +208,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             placeholder="Search this workspace..."
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            className="w-full rounded-lg border border-slate-800 bg-slate-900/80 py-2 pl-9 pr-3 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
+            className="w-full rounded-lg border border-slate-800 bg-slate-900/80 py-2 pl-9 pr-12 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
           />
-        </div>
+          <button type="submit" aria-label="Search" disabled={!searchQuery.trim()} className="absolute right-1 top-1 bottom-1 rounded-md bg-amber-400 px-2 text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50">
+            <Search className="h-3.5 w-3.5" />
+          </button>
+        </form>
       </div>
 
       {/* Zone 3: Credits Meter, Actions & User Profile */}

@@ -53,6 +53,7 @@ function MainApp() {
     toasts,
     dismissToast,
     signOut,
+    setSearchQuery,
   } = useApp();
 
   const handleOpenResearchForCompany = (comp: Company) => {
@@ -107,6 +108,10 @@ function MainApp() {
           setResearchSubject(undefined);
           setCurrentView('research');
         }}
+        onSubmitSearch={(query) => {
+          setSearchQuery(query);
+          setCurrentView('companies');
+        }}
         onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
         onSignOut={signOut}
       />
@@ -133,6 +138,7 @@ function MainApp() {
           {currentView === 'companies' && (
             <CompanyDiscovery
               onOpenResearchForCompany={handleOpenResearchForCompany}
+              onSearchWebCompany={(name) => handleOpenResearchForSubject('company', `subj-${Date.now()}`, name)}
             />
           )}
 

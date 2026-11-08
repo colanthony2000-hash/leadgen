@@ -24,9 +24,10 @@ import { Company, IndustryCode, PipelineStage } from '../../types';
 
 interface CompanyDiscoveryProps {
   onOpenResearchForCompany: (company: Company) => void;
+  onSearchWebCompany: (companyName: string) => void;
 }
 
-export const CompanyDiscovery: React.FC<CompanyDiscoveryProps> = ({ onOpenResearchForCompany }) => {
+export const CompanyDiscovery: React.FC<CompanyDiscoveryProps> = ({ onOpenResearchForCompany, onSearchWebCompany }) => {
   const {
     companies,
     activeIndustry,
@@ -230,8 +231,17 @@ export const CompanyDiscovery: React.FC<CompanyDiscoveryProps> = ({ onOpenResear
           <Building2 className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <h3 className="text-sm font-semibold text-white">No matching companies found</h3>
           <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
-            Try adjusting your sector filter, reducing the minimum fit score slider, or clearing the search query.
+            Try adjusting your filters, or search the public web for a company that is not in the workspace list.
           </p>
+          {searchQuery.trim() && (
+            <button
+              onClick={() => onSearchWebCompany(searchQuery.trim())}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-amber-300"
+            >
+              <Search className="h-3.5 w-3.5" />
+              Search the web for “{searchQuery.trim()}”
+            </button>
+          )}
         </div>
       ) : viewMode === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/40 shadow-xl">

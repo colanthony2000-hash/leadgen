@@ -191,15 +191,25 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             </label>
             {subjectType === 'company' ? (
               <>
-              <input
-                type="text"
-                list="research-company-suggestions"
-                value={customSubjectName}
-                onChange={(e) => setCustomSubjectName(e.target.value)}
-                placeholder="Type any company or operator name..."
-                aria-label="Research company or operator"
-                className="w-full px-3.5 py-2 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
-              />
+              <form onSubmit={(event) => { event.preventDefault(); void handleStartResearch(); }} className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  list="research-company-suggestions"
+                  value={customSubjectName}
+                  onChange={(e) => setCustomSubjectName(e.target.value)}
+                  placeholder="Type any company or operator name..."
+                  aria-label="Research company or operator"
+                  className="min-w-0 flex-1 px-3.5 py-2 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
+                />
+                <button
+                  type="submit"
+                  disabled={isRunning || creditBalance < 5 || !customSubjectName.trim()}
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 text-xs font-semibold text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  {isRunning ? 'Searching…' : 'Search the web · 5 credits'}
+                </button>
+              </form>
               <datalist id="research-company-suggestions">
                 {suggestedCompanies.map((company) => (
                   <option key={company.id} value={company.canonical_name}>
@@ -208,17 +218,34 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
                 ))}
               </datalist>
               <p className="mt-1.5 text-[11px] text-slate-500">
-                Suggestions come from workspace records and follow the sector filter. A new name can be researched too; live source search is not connected yet.
+                Suggestions come from workspace records and follow the sector filter. Search the web for any other company name.
               </p>
+              {isRunning && (
+                <div role="status" className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-amber-400" />
+                  <span>{runStage || 'Searching the web and preparing the dossier…'}</span>
+                </div>
+              )}
               </>
             ) : (
-              <input
-                type="text"
-                placeholder="Enter project name, tender reference, or commercial topic..."
-                value={customSubjectName}
-                onChange={(e) => setCustomSubjectName(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
-              />
+              <form onSubmit={(event) => { event.preventDefault(); void handleStartResearch(); }} className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  placeholder="Enter project name, tender reference, or commercial topic..."
+                  value={customSubjectName}
+                  onChange={(e) => setCustomSubjectName(e.target.value)}
+                  aria-label="Research tender, project, or market topic"
+                  className="min-w-0 flex-1 px-3.5 py-2 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
+                />
+                <button
+                  type="submit"
+                  disabled={isRunning || creditBalance < 5 || !customSubjectName.trim()}
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 text-xs font-semibold text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  {isRunning ? 'Searching…' : 'Search the web · 5 credits'}
+                </button>
+              </form>
             )}
           </div>
 
@@ -318,32 +345,9 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             </div>
           </div>
 
-          <div className="space-y-3">
-            {isRunning && (
-              <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-300 flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin shrink-0 text-amber-400" />
-                <span className="animate-pulse">{runStage}</span>
-              </div>
-            )}
-
-            <button
-              onClick={handleStartResearch}
-              disabled={isRunning || creditBalance < 5}
-              className="w-full py-3 px-4 text-xs font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-            >
-              {isRunning ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Synthesizing Intelligence...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>Run Deep Research (-5 Credits)</span>
-                </>
-              )}
-            </button>
-          </div>
+        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 text-[11px] text-slate-400">
+          Enter a company or tender above and select <span className="font-semibold text-amber-300">Search the web</span>. Pressing Enter in the target field does the same.
+        </div>
         </div>
       </div>
 
