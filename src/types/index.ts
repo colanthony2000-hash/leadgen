@@ -77,6 +77,7 @@ export interface BusinessProspectMatch {
   matched_offerings: string[];
   employee_band?: string;
   employee_size_confidence?: 'sourced' | 'estimated' | 'unknown';
+  evidence_status?: 'grounded' | 'needs_verification';
   sources: ResearchSource[];
   discovered_at: string;
   approved_at?: string;
