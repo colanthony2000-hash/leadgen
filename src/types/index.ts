@@ -333,6 +333,17 @@ export interface ResearchJob {
       title: string;
       relevance: string;
     }>;
+    potential_leads?: Array<{
+      organization_name: string;
+      signal_type: 'active_request' | 'past_engagement' | 'potential_fit';
+      evidence_claim: string;
+      evidence_date?: string;
+      source_name: string;
+      source_url: string;
+      fit_reason: string;
+      contact_role_to_verify: string;
+      recommended_first_step: string;
+    }>;
     known_facts: Array<{
       claim: string;
       source_name: string;

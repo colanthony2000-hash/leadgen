@@ -420,7 +420,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
                 Research Completed · {activeJobResult.subject_name}
               </span>
               <h2 className="text-xl font-bold text-white mt-0.5">
-                Executive Opportunity & Procurement Dossier
+                {activeJobResult.subject_type === 'market_topic' ? 'Opportunity & Outreach Lead Dossier' : 'Executive Opportunity & Procurement Dossier'}
               </h2>
             </div>
 
@@ -456,6 +456,51 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               {uniqueResearchLines(activeJobResult.result.executive_summary)}
             </p>
           </div>
+
+          {activeJobResult.subject_type === 'market_topic' && (
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Potential Organizations to Contact
+                </h3>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  These are prospecting leads, not confirmed buyers. Each lead must match a source-linked claim; qualify current need before pitching.
+                </p>
+              </div>
+              {(activeJobResult.result.potential_leads || []).length === 0 ? (
+                <p className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-xs text-slate-400">
+                  No source-backed organization could be verified from this search. Broaden the need or location, then try again.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {activeJobResult.result.potential_leads!.map((lead, index) => (
+                    <article key={`${lead.organization_name}-${index}`} className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-semibold text-white">{lead.organization_name}</h4>
+                        <span className={`rounded-full border px-2 py-1 text-[10px] font-medium ${lead.signal_type === 'active_request'
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                          : lead.signal_type === 'past_engagement'
+                            ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                            : 'border-slate-700 bg-slate-800 text-slate-300'}`}>
+                          {lead.signal_type === 'active_request' ? 'Active public request'
+                            : lead.signal_type === 'past_engagement' ? 'Past training / digital activity' : 'Potential fit to qualify'}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-slate-300">{lead.evidence_claim}</p>
+                      <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                        <div><span className="text-slate-500">Fit hypothesis: </span><span className="text-slate-300">{lead.fit_reason}</span></div>
+                        <div><span className="text-slate-500">Role to identify: </span><span className="text-slate-300">{lead.contact_role_to_verify}</span></div>
+                        <div className="sm:col-span-2"><span className="text-slate-500">First step: </span><span className="text-slate-300">{lead.recommended_first_step}</span></div>
+                      </div>
+                      <a href={lead.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-amber-400 hover:underline">
+                        {lead.source_name}{lead.evidence_date ? ` · ${lead.evidence_date}` : ''}<ExternalLink className="h-3 w-3" />
+                      </a>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Section 2: Strategic Fit */}
           <div className="space-y-2">

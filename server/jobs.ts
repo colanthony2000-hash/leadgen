@@ -337,8 +337,8 @@ Industry: ${industry || 'General Industry'}
 Research focus: ${question || 'Find organizations publicly seeking this service or people publicly hiring for this work'}
 Requested source categories: ${JSON.stringify(job.payload.sources || [])}
 
-Search for churches, schools, nonprofits, companies, public bodies, and other organizations that may be seeking this service, as well as relevant public tenders, requests for proposals, training announcements, event notices, and job openings. Prioritize official organization pages, public procurement notices, and other primary sources. Search for the need phrase and close variants with Nigerian locations.
-This is a service need or job type, not an organization. Do not search for its corporate registration, officers, physical assets, or tenders under the phrase itself. Do not treat absence of search results as proof that demand does not exist. Return only current public signals found. Do not guess or create facts, people, tenders, dates, or URLs. The API will provide source citations separately; do not fabricate citations.` : `Research ${subject_type || 'company'}: ${subject_name}
+Search for churches, schools, nonprofits, companies, public bodies, and other organizations that may be seeking this service, as well as relevant public tenders, requests for proposals, training announcements, event notices, and job openings. Prioritize active requests and upcoming programs, then recent completed programs that could support a relevant follow-up. Prioritize official organization pages, public procurement notices, and other primary sources. Search for the need phrase and close variants with Nigerian locations.
+This is a service need or job type, not an organization. Do not search for its corporate registration, officers, physical assets, or tenders under the phrase itself. Do not treat absence of search results as proof that demand does not exist. Clearly distinguish open requests from past activity and audience-fit hypotheses. Do not guess or create facts, people, tenders, dates, or URLs. The API will provide source citations separately; do not fabricate citations.` : `Research ${subject_type || 'company'}: ${subject_name}
 Industry: ${industry || 'General Industry'}
 Research focus: ${question || 'Assess possible commercial fit'}
 Requested source categories: ${JSON.stringify(job.payload.sources || [])}
@@ -392,7 +392,7 @@ Return a concise factual briefing. Separate confirmed information from gaps. Do 
 
     db.updateBackgroundJob(job.id, { progress_pct: 60 });
 
-    const synthesisPrompt = `You are preparing a preliminary commercial-fit analysis for Jeneconk BII.
+    const synthesisPrompt = `You are preparing a preliminary commercial-fit and outreach lead analysis for Jeneconk BII.
 
 Subject: ${subject_name} (${subject_type || 'company'})
 Industry Sector: ${industry || 'General Industry'}
@@ -411,8 +411,12 @@ Evidence rules:
 - State each distinct finding only once. Keep the executive summary to at most three sentences and do not repeat facts in the strategic-fit analysis.
 - Return no more than four suggested roles, with no duplicate roles. Remove duplicate critical unknowns.
 ${isMarketTopic ? `- The subject is a buyer need or job type, not a named organization. Never discuss registration, corporate officers, assets, or organizational facts about the phrase itself.
-- Look for evidence of organizations publicly seeking the service, or employers publicly hiring for the job type. A service topic can have demand even when no public tender or claim citation is returned.
-- List only buyer or hiring roles explicitly supported by the cited claims. Do not fill the roles list with generic guesses.
+- Optimize for organizations Jeneconk could responsibly approach, not a news recap. Return up to six potential_leads, prioritizing organizations with source-backed training, digital adoption, service requests, hiring, or similar activity relevant to the supplied offerings.
+- A lead is a prospect to qualify, not automatically a buyer. Use signal_type "active_request" only when the cited claim explicitly shows a current open request, tender, or active invitation for providers. Use "past_engagement" for a documented completed or historical program. Use "potential_fit" when the source supports organizational relevance but not an expressed purchase or training need.
+- Every lead must name an organization present in the cited evidence and include evidence_claim copied exactly from one supplied grounded claim, source_url copied exactly from that claim's sources, and source_name copied from the same source. If no evidence-backed organization can be named, return an empty list.
+- Do not turn a past conference, course listing, article, or general interest into an active opportunity. Keep evidence_date empty unless the cited claim itself contains a date.
+- Keep fit_reason explicitly conditional. contact_role_to_verify is a role hypothesis, not a confirmed named contact. recommended_first_step must tell the user how to qualify the lead without asserting current demand.
+- List only buyer or hiring roles explicitly supported by cited claims in key_decision_makers; do not fill that field with generic guesses.
 - Distinguish public buying signals from possible audience fit. Do not claim an organization wants the service without a cited source.` : ''}
 
 Return JSON with this shape:
@@ -420,6 +424,7 @@ Return JSON with this shape:
   "executive_summary": "Concise summary constrained to the supplied search briefing and cited claims",
   "strategic_fit_analysis": "Conditional fit assessment based only on the supplied offerings and search evidence",
   "key_decision_makers": [{ "name": "Role to identify", "title": "Suggested role", "relevance": "Why this role may be relevant; verify for the target" }],
+  "potential_leads": [{ "organization_name": "Organization explicitly supported by evidence", "signal_type": "active_request|past_engagement|potential_fit", "evidence_claim": "Exact supplied grounded claim", "evidence_date": "Date stated in the claim, otherwise empty", "source_name": "Exact source title", "source_url": "Exact URL attached to that claim", "fit_reason": "Conditional fit with supplied offerings", "contact_role_to_verify": "Likely role to identify; not a confirmed contact", "recommended_first_step": "A concrete qualification step" }],
   "critical_unknowns": ["Important points that the search did not establish"],
   "recommended_outreach_angle": "A cautious discovery question, not a claim about the target"
 }
@@ -437,6 +442,7 @@ Return valid JSON only.`;
     }
 
     const synthesisResult = JSON.parse(synthesisResponse.text);
+    if (isMarketTopic && !Array.isArray(synthesisResult.potential_leads)) synthesisResult.potential_leads = [];
     if (
       typeof synthesisResult.executive_summary !== 'string' ||
       typeof synthesisResult.strategic_fit_analysis !== 'string' ||
@@ -460,10 +466,48 @@ Return valid JSON only.`;
       return true;
     }).slice(0, 4);
 
+    if (isMarketTopic) {
+      const knownLeadSignalTypes = new Set(['active_request', 'past_engagement', 'potential_fit']);
+      const allowedLeads = (Array.isArray(synthesisResult.potential_leads) ? synthesisResult.potential_leads : [])
+        .filter((item: any) => {
+          if (!item || typeof item.organization_name !== 'string' || !item.organization_name.trim()) return false;
+          if (!knownLeadSignalTypes.has(item.signal_type) || typeof item.evidence_claim !== 'string') return false;
+          const matchingFact = groundedFacts.find((fact) => normalizeResearchText(fact.claim) === normalizeResearchText(item.evidence_claim));
+          if (!matchingFact) return false;
+          if (!matchingFact.sources.some((source) => source.source_url === item.source_url && source.source_name === item.source_name)) return false;
+          const organization = normalizeResearchText(item.organization_name);
+          if (!normalizeResearchText(matchingFact.claim + ' ' + matchingFact.source_name).includes(organization)) return false;
+          return true;
+        })
+        .slice(0, 6)
+        .map((item: any) => {
+          const matchingFact = groundedFacts.find((fact) => normalizeResearchText(fact.claim) === normalizeResearchText(item.evidence_claim))!;
+          const explicitOpenRequest = /\b(?:currently (?:seeking|accepting)|open (?:tender|call for proposals?|applications?)|applications? (?:are )?currently open|invitation to submit (?:a )?(?:proposal|bid|tender))\b/i.test(matchingFact.claim);
+          const signalType = item.signal_type === 'active_request' && !explicitOpenRequest
+            ? 'past_engagement'
+            : item.signal_type;
+          return {
+            organization_name: item.organization_name.trim().slice(0, 180),
+            signal_type: signalType,
+            evidence_claim: matchingFact.claim,
+            ...(typeof item.evidence_date === 'string' && item.evidence_date.trim() && matchingFact.claim.includes(item.evidence_date.trim()) ? { evidence_date: item.evidence_date.trim().slice(0, 80) } : {}),
+            source_name: matchingFact.sources.find((source) => source.source_url === item.source_url)!.source_name,
+            source_url: matchingFact.sources.find((source) => source.source_url === item.source_url)!.source_url,
+            fit_reason: String(item.fit_reason || '').slice(0, 500),
+            contact_role_to_verify: String(item.contact_role_to_verify || '').slice(0, 160),
+            recommended_first_step: String(item.recommended_first_step || '').slice(0, 500),
+          };
+        });
+      synthesisResult.potential_leads = allowedLeads;
+    } else {
+      synthesisResult.potential_leads = [];
+    }
+
     if (isMarketTopic && groundedFacts.length === 0) {
       synthesisResult.executive_summary = `Google Search returned no claim-level citations for the buyer need or job type “${subject_name}”. This search result does not establish whether demand exists.`;
       synthesisResult.strategic_fit_analysis = 'The supplied offerings may be relevant to this need, but no source-backed organization or hiring signal was found in this search. Treat potential audience fit as a hypothesis to validate.';
       synthesisResult.key_decision_makers = [];
+      synthesisResult.potential_leads = [];
       synthesisResult.recommended_outreach_angle = `Ask prospective organizations whether they currently need support with ${subject_name}.`;
     }
 
