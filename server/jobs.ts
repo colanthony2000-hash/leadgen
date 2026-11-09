@@ -331,7 +331,14 @@ For Nigeria-wide education searches, include small independent and low-fee secon
 
     db.updateBackgroundJob(job.id, { progress_pct: 35 });
 
-    const searchPrompt = `Research ${subject_type || 'company'}: ${subject_name}
+    const isMarketTopic = subject_type === 'market_topic';
+    const searchPrompt = isMarketTopic ? `Research this buyer need or job type in Nigeria: ${subject_name}
+Industry: ${industry || 'General Industry'}
+Research focus: ${question || 'Find organizations publicly seeking this service or people publicly hiring for this work'}
+Requested source categories: ${JSON.stringify(job.payload.sources || [])}
+
+Search for churches, schools, nonprofits, companies, public bodies, and other organizations that may be seeking this service, as well as relevant public tenders, requests for proposals, training announcements, event notices, and job openings. Prioritize official organization pages, public procurement notices, and other primary sources. Search for the need phrase and close variants with Nigerian locations.
+This is a service need or job type, not an organization. Do not search for its corporate registration, officers, physical assets, or tenders under the phrase itself. Do not treat absence of search results as proof that demand does not exist. Return only current public signals found. Do not guess or create facts, people, tenders, dates, or URLs. The API will provide source citations separately; do not fabricate citations.` : `Research ${subject_type || 'company'}: ${subject_name}
 Industry: ${industry || 'General Industry'}
 Research focus: ${question || 'Assess possible commercial fit'}
 Requested source categories: ${JSON.stringify(job.payload.sources || [])}
@@ -403,6 +410,10 @@ Evidence rules:
 - Do not make claims about Jenecon credentials unless they appear in the supplied offerings.
 - State each distinct finding only once. Keep the executive summary to at most three sentences and do not repeat facts in the strategic-fit analysis.
 - Return no more than four suggested roles, with no duplicate roles. Remove duplicate critical unknowns.
+${isMarketTopic ? `- The subject is a buyer need or job type, not a named organization. Never discuss registration, corporate officers, assets, or organizational facts about the phrase itself.
+- Look for evidence of organizations publicly seeking the service, or employers publicly hiring for the job type. A service topic can have demand even when no public tender or claim citation is returned.
+- List only buyer or hiring roles explicitly supported by the cited claims. Do not fill the roles list with generic guesses.
+- Distinguish public buying signals from possible audience fit. Do not claim an organization wants the service without a cited source.` : ''}
 
 Return JSON with this shape:
 {
@@ -449,17 +460,27 @@ Return valid JSON only.`;
       return true;
     }).slice(0, 4);
 
+    if (isMarketTopic && groundedFacts.length === 0) {
+      synthesisResult.executive_summary = `Google Search returned no claim-level citations for the buyer need or job type “${subject_name}”. This search result does not establish whether demand exists.`;
+      synthesisResult.strategic_fit_analysis = 'The supplied offerings may be relevant to this need, but no source-backed organization or hiring signal was found in this search. Treat potential audience fit as a hypothesis to validate.';
+      synthesisResult.key_decision_makers = [];
+      synthesisResult.recommended_outreach_angle = `Ask prospective organizations whether they currently need support with ${subject_name}.`;
+    }
+
     const procurementKeywords = /tender|procurement|contract|rfp|bid|supplier|vendor|award|budget/i;
+    const buyerSignalKeywords = /tender|procurement|contract|rfp|bid|supplier|vendor|training|workshop|service|hiring|job|vacan|career|request|seeking|looking for|invitation|registration|apply/i;
     synthesisResult.known_facts = groundedFacts;
     synthesisResult.procurement_signals = groundedFacts
-      .filter((fact) => procurementKeywords.test(fact.claim))
+      .filter((fact) => (isMarketTopic ? buyerSignalKeywords : procurementKeywords).test(fact.claim))
       .map((fact) => fact.claim);
     synthesisResult.search_queries = [...new Set(grounding?.webSearchQueries || [])];
     if (groundedFacts.length === 0) {
-      synthesisResult.critical_unknowns = [
-        'Google Search returned no claim-level grounding citations for this request.',
-        ...synthesisResult.critical_unknowns,
-      ];
+      synthesisResult.critical_unknowns = isMarketTopic
+        ? ['No claim-level citations were returned for this need query; that does not show that organizations have no demand.']
+        : [
+            'Google Search returned no claim-level grounding citations for this request.',
+            ...synthesisResult.critical_unknowns,
+          ];
     }
 
     db.updateBackgroundJob(job.id, { progress_pct: 75 });

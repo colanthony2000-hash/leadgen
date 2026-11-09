@@ -54,9 +54,19 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
   );
 
   const [selectedSources, setSelectedSources] = useState<string[]>([
-    'Official Regulatory Registries (NUPRC / NCDMB)',
-    'NipeX Procurement Tender Portals',
-    'Verified Corporate Press & Financial Disclosures',
+    ...(initialSubject?.type === 'market_topic'
+      ? [
+          'Official organization websites and announcements',
+          'Public procurement, tender, and request-for-proposal notices',
+          'Training, event, and service request announcements',
+          'Public job boards and employer career pages',
+        ]
+      : [
+          'Official Regulatory Registries (NUPRC / NCDMB / Ministry of Education)',
+          'NipeX Joint Qualification System (JQS) Notices',
+          'Verified Corporate Press & Financial Disclosures',
+          'Accreditation & Curriculum Examination Directories',
+        ]),
   ]);
 
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -102,6 +112,54 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
       prompt: 'Identify tier-1 EPC consortium subcontracting requirements, Nigerian content thresholds, and QA/QC inspection partners.',
     },
   ];
+  const marketTopicTemplates = [
+    {
+      title: 'Organizations seeking this service',
+      prompt: 'Find Nigerian churches, schools, nonprofits, and private companies publicly seeking this service. Look for current requests, procurement notices, training announcements, and direct expressions of need. Cite only verifiable public evidence.',
+    },
+    {
+      title: 'Related job openings',
+      prompt: 'Find current Nigerian job openings related to this work. Report employer, role, location, posting date, and application source only when supported by a public source.',
+    },
+    {
+      title: 'Potential audience segments',
+      prompt: 'Find source-backed organizations, public requests, or hiring signals related to this service. Keep possible audience segments separate from verified buying intent.',
+    },
+  ];
+  const sourceCategories = subjectType === 'market_topic'
+    ? [
+        'Official organization websites and announcements',
+        'Public procurement, tender, and request-for-proposal notices',
+        'Training, event, and service request announcements',
+        'Public job boards and employer career pages',
+      ]
+    : [
+        'Official Regulatory Registries (NUPRC / NCDMB / Ministry of Education)',
+        'NipeX Joint Qualification System (JQS) Notices',
+        'Verified Corporate Press & Financial Disclosures',
+        'Accreditation & Curriculum Examination Directories',
+      ];
+  const activeTemplates = subjectType === 'market_topic' ? marketTopicTemplates : promptTemplates;
+
+  const handleSubjectTypeChange = (type: 'company' | 'opportunity' | 'market_topic') => {
+    setSubjectType(type);
+    setSelectedSources(type === 'market_topic'
+      ? [
+          'Official organization websites and announcements',
+          'Public procurement, tender, and request-for-proposal notices',
+          'Training, event, and service request announcements',
+          'Public job boards and employer career pages',
+        ]
+      : [
+          'Official Regulatory Registries (NUPRC / NCDMB / Ministry of Education)',
+          'NipeX Joint Qualification System (JQS) Notices',
+          'Verified Corporate Press & Financial Disclosures',
+          'Accreditation & Curriculum Examination Directories',
+        ]);
+    setResearchPrompt(type === 'market_topic'
+      ? marketTopicTemplates[0].prompt
+      : 'Analyze upcoming procurement cycles, key decision-makers, and compatibility with our services.');
+  };
 
   const handleStartResearch = async () => {
     if (!subjectName.trim()) {
@@ -168,13 +226,13 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               {[
                 { id: 'company', label: 'Company / Operator', icon: Building2 },
                 { id: 'opportunity', label: 'Tender / Project', icon: FileText },
-                { id: 'market_topic', label: 'Sector Analysis', icon: Search },
+                { id: 'market_topic', label: 'Buyer Need / Job Type', icon: Search },
               ].map((t) => {
                 const Icon = t.icon;
                 return (
                   <button
                     key={t.id}
-                    onClick={() => setSubjectType(t.id as any)}
+                    onClick={() => handleSubjectTypeChange(t.id as 'company' | 'opportunity' | 'market_topic')}
                     className={`flex min-w-0 items-center justify-center gap-2 py-2 px-3 text-xs font-medium rounded-lg border transition-all ${
                       subjectType === t.id
                         ? 'border-amber-400 bg-amber-400/10 text-amber-300 font-semibold'
@@ -236,10 +294,12 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               <form onSubmit={(event) => { event.preventDefault(); void handleStartResearch(); }} className="flex flex-col gap-2 sm:flex-row">
                 <input
                   type="text"
-                  placeholder="Enter project name, tender reference, or commercial topic..."
+                  placeholder={subjectType === 'market_topic'
+                    ? 'Describe a service need or job type, e.g. church staff training...'
+                    : 'Enter project name, tender reference, or commercial topic...'}
                   value={customSubjectName}
                   onChange={(e) => setCustomSubjectName(e.target.value)}
-                  aria-label="Research tender, project, or market topic"
+                  aria-label={subjectType === 'market_topic' ? 'Research a buyer need or job type' : 'Research tender, project, or market topic'}
                   className="min-w-0 flex-1 px-3.5 py-2 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
                 />
                 <button
@@ -264,7 +324,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             </div>
 
             <div className="flex flex-wrap gap-2 mb-3">
-              {promptTemplates.map((tmpl, idx) => (
+              {activeTemplates.map((tmpl, idx) => (
                 <button
                   key={idx}
                   onClick={() => setResearchPrompt(tmpl.prompt)}
@@ -289,12 +349,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
               4. Source Categories to Prioritize
             </label>
             <div className="space-y-2 text-xs text-slate-300">
-              {[
-                'Official Regulatory Registries (NUPRC / NCDMB / Ministry of Education)',
-                'NipeX Joint Qualification System (JQS) Notices',
-                'Verified Corporate Press & Financial Disclosures',
-                'Accreditation & Curriculum Examination Directories',
-              ].map((src, i) => (
+              {sourceCategories.map((src, i) => (
                 <label key={i} className="flex items-center gap-2 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -416,11 +471,15 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Source-supported Procurement & Operational Signals
+                {activeJobResult.subject_type === 'market_topic'
+                  ? 'Source-supported Buyer / Hiring Signals'
+                  : 'Source-supported Procurement & Operational Signals'}
               </h4>
               <ul className="space-y-2 text-xs text-slate-300">
                 {displayedProcurementSignals.length === 0 && (
-                  <li className="text-slate-500">No procurement-related claims had grounding citations. Check the search queries and source list below.</li>
+                  <li className="text-slate-500">{activeJobResult.subject_type === 'market_topic'
+                    ? 'No public buyer or hiring signal had grounding citations in this search. This does not establish whether demand exists.'
+                    : 'No procurement-related claims had grounding citations. Check the search queries and source list below.'}</li>
                 )}
                 {displayedProcurementSignals.map((sig, i) => (
                   <li key={i} className="flex items-start gap-2">
@@ -433,7 +492,7 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
 
             <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Suggested Roles to Investigate
+                {activeJobResult.subject_type === 'market_topic' ? 'Buyer / Hiring Roles to Verify' : 'Suggested Roles to Investigate'}
               </h4>
               <div className="space-y-2">
                 {activeJobResult.result.key_decision_makers.map((dm, i) => (
@@ -443,6 +502,9 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
                     <div className="text-[11px] text-slate-400">{dm.relevance}</div>
                   </div>
                 ))}
+                {activeJobResult.subject_type === 'market_topic' && activeJobResult.result.key_decision_makers.length === 0 && (
+                  <p className="text-xs text-slate-500">No role was included because the cited search results did not support one.</p>
+                )}
               </div>
             </div>
           </div>
@@ -463,7 +525,9 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
             <div className="space-y-2">
               {displayedFacts.length === 0 && (
                 <p className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-400">
-                  Google Search returned no claim-level citations for this request. Treat the AI summary as preliminary.
+                  {activeJobResult.subject_type === 'market_topic'
+                    ? 'Google Search returned no claim-level citations for this need query. This does not show that demand is absent.'
+                    : 'Google Search returned no claim-level citations for this request. Treat the AI summary as preliminary.'}
                 </p>
               )}
               {displayedFacts.map((fact, i) => (
