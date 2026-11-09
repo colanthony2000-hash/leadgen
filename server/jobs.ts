@@ -87,19 +87,17 @@ export class BackgroundJobWorker {
     const apiKey = process.env.BRAVE_SEARCH_API_KEY?.trim();
     if (!apiKey) return this.groundedJson(prompt);
     if (!this.aiClient) throw new Error('AI research is unavailable because GEMINI_API_KEY is not configured.');
-    const fallbackToGoogle = async (reason: string) => {
-      console.warn(`Brave Search failed (${reason}); retrying prospect discovery with Google Search grounding.`);
-      try { return await this.groundedJson(prompt); }
-      catch (error: any) { throw new Error(`Brave Search failed (${reason}); Google Search fallback also failed: ${error?.message || 'Unknown research error'}`); }
-    };
-    const boundedQuery = query.trim().split(/\s+/u).slice(0, 70).join(' ').slice(0, 550);
-    // Brave's Web Search endpoint has a limited country enum and does not accept NG.
-    // Keep Nigeria in the user query instead of sending the unsupported country parameter.
-    const params = new URLSearchParams({ q: boundedQuery, search_lang: 'en', count: '20', safesearch: 'moderate', result_filter: 'web' });
-    const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-      headers: { 'X-Subscription-Token': apiKey, Accept: 'application/json', 'Cache-Control': 'no-cache' },
-      signal: AbortSignal.timeout(12000),
-    });
+    const boundedQuery = query.trim().split(/\s+/u).slice(0, 50).join(' ').slice(0, 450);
+    const params = new URLSearchParams({ q: boundedQuery });
+    let response: Response;
+    try {
+      response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+        headers: { 'X-Subscription-Token': apiKey, Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (error: any) {
+      throw new Error(`Could not connect to Brave Search: ${error?.message || 'network request failed'}`);
+    }
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
       let providerMessage = '';
@@ -107,28 +105,24 @@ export class BackgroundJobWorker {
         const errorPayload = JSON.parse(errorText);
         const validationErrors = errorPayload?.error?.meta?.errors;
         const validationDetail = Array.isArray(validationErrors) ? validationErrors.map((item: any) => `${item?.loc?.slice?.(-1)?.[0] || 'parameter'}: ${item?.msg || ''}`).join('; ') : '';
-        providerMessage = String(validationDetail || errorPayload?.error?.detail || errorPayload?.error?.message || errorPayload?.message || '').slice(0, 240);
-      } catch { /* use a friendly status message when Brave returns non-JSON */ }
-      const detail = response.status === 401 || response.status === 403 ? 'check the Brave Search API key and account access' : response.status === 429 ? 'Brave Search rate or credit limit was reached' : `Brave Search returned HTTP ${response.status}${providerMessage ? `: ${providerMessage}` : ''}`;
-      return fallbackToGoogle(detail);
+        providerMessage = String(validationDetail || errorPayload?.error?.detail || errorPayload?.error?.message || errorPayload?.message || '').slice(0, 300);
+      } catch { providerMessage = errorText.slice(0, 300); }
+      throw new Error(`Brave Search returned HTTP ${response.status}${providerMessage ? `: ${providerMessage}` : '.'}`);
     }
     const payload = await response.json() as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
     const searchResults = (payload.web?.results || []).filter((item) => item.url).map((item) => ({ title: String(item.title || item.url), url: String(item.url), snippet: String(item.description || '').slice(0, 700) }));
     const sources = searchResults.map(({ title, url }) => ({ title, url }));
-    if (!sources.length) return fallbackToGoogle('it returned no web pages for the query');
+    if (!sources.length) throw new Error('Brave Search returned no web results. Try a broader category or location.');
     const searchContext = searchResults.map((source, index) => `${index + 1}. ${source.title}\nURL: ${source.url}\nSnippet: ${source.snippet}`).join('\n\n');
-    let responseFromModel;
-    try {
-      responseFromModel = await this.aiClient.models.generateContent({
-        model: GEMINI_RESEARCH_MODEL,
-        contents: `${prompt}\n\nIndependent web search results (use only organizations evidenced in these result titles or snippets; cite only the listed URLs):\n${searchContext}`,
-        config: { responseMimeType: 'application/json' },
-      });
-    } catch (error: any) { return fallbackToGoogle(`Gemini could not process Brave's results: ${error?.message || 'unknown error'}`); }
-    if (!responseFromModel?.text) return fallbackToGoogle('Gemini returned an empty response after Brave Search');
+    const responseFromModel = await this.aiClient.models.generateContent({
+      model: GEMINI_RESEARCH_MODEL,
+      contents: `${prompt}\n\nBrave Search results (use only organizations evidenced in these result titles or snippets; cite only the listed URLs):\n${searchContext}`,
+      config: { responseMimeType: 'application/json' },
+    });
+    if (!responseFromModel.text) throw new Error('Gemini returned an empty response after Brave Search.');
     let data: any;
     try { data = JSON.parse(responseFromModel.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()); }
-    catch { return fallbackToGoogle('Gemini returned an invalid structured response after Brave Search'); }
+    catch { throw new Error('Gemini returned an invalid structured response after Brave Search.'); }
     return { data, sources };
   }
 

@@ -34,6 +34,7 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: 'Jeneconk BII Enterprise API v1.1',
+    revision: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'unknown',
     gemini_configured: !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY',
     prospect_search_provider: process.env.BRAVE_SEARCH_API_KEY ? 'Brave Search + Gemini' : 'Google Search grounding + Gemini',
     database: 'File-backed relational simulation with RLS & SHA-256 suppression',

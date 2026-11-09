@@ -83,6 +83,15 @@ export interface BusinessProspectMatch {
   approved_at?: string;
 }
 
+export interface ProspectSearchRecord {
+  id: string;
+  search_type: 'buyers' | 'companies';
+  title: string;
+  query_summary: string;
+  results: BusinessProspectMatch[];
+  created_at: string;
+}
+
 export interface BusinessProfileResearchDraft {
   company_name: string;
   website: string;
@@ -153,6 +162,7 @@ export interface BusinessProfile {
   profile_sources?: ResearchSource[];
   profile_approved_at?: string;
   approved_prospects?: BusinessProspectMatch[];
+  saved_prospect_searches?: ProspectSearchRecord[];
   company_profiles?: CompanyProfile[];
   company_research_records?: CompanyResearchRecord[];
   scoring_weights: ScoringWeights;
