@@ -75,6 +75,8 @@ export interface BusinessProspectMatch {
   description: string;
   match_reason: string;
   matched_offerings: string[];
+  employee_band?: string;
+  employee_size_confidence?: 'sourced' | 'estimated' | 'unknown';
   sources: ResearchSource[];
   discovered_at: string;
   approved_at?: string;
@@ -116,6 +118,7 @@ export interface CompanySearchInput {
   company_name?: string;
   category?: string;
   location?: string;
+  employee_band?: string;
 }
 
 export interface CompanyResearchRecord extends BusinessProfileResearchDraft {

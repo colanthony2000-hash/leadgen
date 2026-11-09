@@ -24,6 +24,17 @@ function uniqueBriefingLines(value: string): string {
   }).join('\n');
 }
 
+function normalizeSourceUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.hostname.toLowerCase().replace(/^www\./u, '')}${url.pathname.replace(/\/$/u, '')}`;
+  } catch {
+    return value.trim().replace(/\/$/u, '').toLowerCase();
+  }
+}
+
+const EMPLOYEE_BANDS = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1001-5000', '5001-10000', '10001+'] as const;
+
 export class BackgroundJobWorker {
   private aiClient: GoogleGenAI | null = null;
 
@@ -39,7 +50,7 @@ export class BackgroundJobWorker {
     const response = await this.aiClient.models.generateContent({
       model: GEMINI_RESEARCH_MODEL,
       contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
+      config: { tools: [{ googleSearch: {} }], responseMimeType: 'application/json' },
     });
     if (!response.text) throw new Error('Google Search returned an empty response.');
     const text = response.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
@@ -83,39 +94,45 @@ Visit/search across each supplied site and its pages. Extract the company identi
     };
   }
 
-  public async findBusinessProspects(profile: BusinessProfile): Promise<BusinessProspectMatch[]> {
-    const { data, sources } = await this.groundedJson(`Find up to 20 real organizations across Nigeria that could plausibly benefit from or procure the following company's offerings. Search current public information with Google Search. Supplier: ${profile.company_name}; primary website: ${profile.website}; service websites: ${JSON.stringify(profile.service_websites || [])}; summary: ${profile.business_summary}; offerings: ${JSON.stringify(profile.offerings)}; target regions: ${JSON.stringify(profile.target_regions)}; target industries: ${JSON.stringify(profile.target_industries)}; intended customer types: ${JSON.stringify(profile.target_customer_types || [])}.
-Actively search beyond large public institutions: include small and independent secondary schools, low-fee private schools, public and private schools, churches and faith-based organizations, private companies and SMEs, NGOs, and training centres when relevant to the supplied offerings. For nationwide Nigeria searches, diversify results across states and regions rather than returning only prominent Lagos organizations. Use school websites and directories, church/denomination or ministry pages, company sites, credible associations, and public announcements as candidate sources. Do not say a prospect currently needs or is buying unless a source establishes it; otherwise label it as a potential fit. Do not force an oil and gas fit unless the offering supports it. Exclude the supplier itself. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"","location":"","description":"short evidence-based description","match_reason":"why the supplied offering could fit; distinguish inference from sourced fact","matched_offerings":["offering name"],"source_urls":["URL returned by Google Search"]}]}. source_urls must be copied exactly from Google Search results and support the candidate; if none support it, omit it. Do not invent people, contact details, procurement, URLs, or facts. Return fewer results rather than weak matches.`);
+  public async findBusinessProspects(profile: BusinessProfile, filters: { employee_band?: string } = {}): Promise<BusinessProspectMatch[]> {
+    const { data, sources } = await this.groundedJson(`Find up to 20 real organizations across Nigeria that could plausibly benefit from or procure the following company's offerings. Search current public information with Google Search. Supplier: ${profile.company_name}; primary website: ${profile.website}; service websites: ${JSON.stringify(profile.service_websites || [])}; summary: ${profile.business_summary}; offerings: ${JSON.stringify(profile.offerings)}; target regions: ${JSON.stringify(profile.target_regions)}; target industries: ${JSON.stringify(profile.target_industries)}; intended customer types: ${JSON.stringify(profile.target_customer_types || [])}; requested employee band: ${filters.employee_band || 'any size'}.
+Actively search beyond large public institutions: include small and independent secondary schools, low-fee private schools, public and private schools, churches and faith-based organizations, private companies and SMEs, NGOs, and training centres when relevant to the supplied offerings. For nationwide Nigeria searches, diversify results across states and regions rather than returning only prominent Lagos organizations. Use school websites and directories, church/denomination or ministry pages, company sites, credible associations, and public announcements as candidate sources. Do not say a prospect currently needs or is buying unless a source establishes it; otherwise label it as a potential fit. Do not force an oil and gas fit unless the offering supports it. For each candidate return employee_band using one of 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+, Unknown. Use a sourced/estimated band only when a public source or credible directory supports it; otherwise Unknown. If an employee band filter was requested, include only candidates in that band. Exclude the supplier itself. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"","location":"","description":"short evidence-based description","match_reason":"why the supplied offering could fit; distinguish inference from sourced fact","matched_offerings":["offering name"],"employee_band":"Unknown","employee_size_confidence":"sourced|estimated|unknown","source_urls":["URL returned by Google Search"]}]}. source_urls must be copied exactly from Google Search results and support the candidate; if none support it, omit it. Do not invent people, contact details, procurement, URLs, or facts. Return fewer results rather than weak matches.`);
     if (!Array.isArray(data.prospects)) throw new Error('AI prospect search returned an invalid response.');
     const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products', 'faith_based', 'private_sector'];
-    const groundedSources = new Map(sources.map((source) => [source.url, source]));
-    return data.prospects.slice(0, 20).filter((item: any) => item.company_name && Array.isArray(item.source_urls) && item.source_urls.some((url: unknown) => typeof url === 'string' && groundedSources.has(url))).map((item: any, index: number) => ({
+    const groundedSources = new Map(sources.map((source) => [normalizeSourceUrl(source.url), source]));
+    return data.prospects.slice(0, 20).filter((item: any) => item.company_name && Array.isArray(item.source_urls) && item.source_urls.some((url: unknown) => typeof url === 'string' && groundedSources.has(normalizeSourceUrl(url)))).filter((item: any) => !filters.employee_band || item.employee_band === filters.employee_band).map((item: any, index: number) => ({
       id: `prospect-${Date.now()}-${index}`, company_name: String(item.company_name).slice(0, 200), website: String(item.website || '').slice(0, 300),
       industry_id: allowedIndustries.includes(item.industry_id) ? item.industry_id : 'digital_products', company_type: String(item.company_type || 'Organization').slice(0, 100),
       location: String(item.location || 'Not established').slice(0, 160), description: String(item.description || '').slice(0, 1000),
       match_reason: String(item.match_reason || '').slice(0, 1000), matched_offerings: Array.isArray(item.matched_offerings) ? item.matched_offerings.filter((value: unknown) => typeof value === 'string').slice(0, 10) : [],
-      sources: item.source_urls.filter((url: unknown) => typeof url === 'string' && groundedSources.has(url)).map((url: string) => groundedSources.get(url)!), discovered_at: new Date().toISOString(),
+      employee_band: EMPLOYEE_BANDS.includes(item.employee_band) ? item.employee_band : 'Unknown',
+      employee_size_confidence: EMPLOYEE_BANDS.includes(item.employee_band) ? (item.employee_size_confidence === 'sourced' ? 'sourced' : 'estimated') : 'unknown',
+      sources: item.source_urls.filter((url: unknown) => typeof url === 'string' && groundedSources.has(normalizeSourceUrl(url))).map((url: string) => groundedSources.get(normalizeSourceUrl(url))!), discovered_at: new Date().toISOString(),
     }));
   }
 
   public async searchCompanies(input: CompanySearchInput): Promise<BusinessProspectMatch[]> {
     const name = String(input.company_name || '').trim();
     const category = String(input.category || '').trim();
-    const location = String(input.location || '').trim() || 'Nigeria (nationwide, all states and the FCT)';
-    if (!name && !category && !location) throw new Error('Enter a company name, category, or location to search.');
+    const locationInput = String(input.location || '').trim();
+    if (!name && !category && !locationInput) throw new Error('Enter a company name, category, or location to search.');
+    const location = locationInput || 'Nigeria (nationwide, all states and the FCT)';
+    const employeeBand = input.employee_band;
     const digitalCategoryTerms = expandDigitalProductCategory(category);
     const categoryQuery = digitalCategoryTerms.length ? `${category}; related search terms: ${digitalCategoryTerms.join(', ')}` : category || 'any';
-    const { data, sources } = await this.groundedJson(`Find up to 20 real organizations matching this public company search. Search criteria: name: ${name || 'any'}; category or service: ${categoryQuery}; location: ${location}.
-For Nigeria-wide education searches, include small independent and low-fee secondary schools as well as large public institutions. For faith-based searches include churches, dioceses, denominations, ministries, and church-operated organizations. For private company searches include SMEs and local businesses, not only major corporations. Search for candidates across multiple Nigerian states/regions, and use school or organization directories and official candidate sites when available. For digital product and technology categories, search across related terms and close synonyms. Return company_type and evidence-based short descriptions. Do not present a possible training or product fit as a confirmed purchasing need. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"","location":"","description":"short factual description","match_reason":"why it matches the requested name, category, or location","matched_offerings":["publicly described services or products"],"source_urls":["URL returned by Google Search"]}]}. source_urls must be copied exactly from Google Search results and support that company; omit any candidate without a supporting source URL. Do not invent URLs, contacts, or facts. Return fewer results rather than weak matches.`);
+    const { data, sources } = await this.groundedJson(`Find up to 20 real organizations matching this public company search. Search criteria: name: ${name || 'any'}; category or service: ${categoryQuery}; location: ${location}; employee band: ${employeeBand || 'any size'}.
+For Nigeria-wide education searches, include small independent and low-fee secondary schools as well as large public institutions. For faith-based searches include churches, dioceses, denominations, ministries, and church-operated organizations. For private company searches include SMEs and local businesses, not only major corporations. Search for candidates across multiple Nigerian states/regions, and use school or organization directories and official candidate sites when available. For digital product and technology categories, search across related terms and close synonyms. Return a supported employee_band (1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+, or Unknown) and employee_size_confidence (sourced, estimated, unknown) for each result. Do not guess; use Unknown when public evidence is unavailable. Apply the employee band filter if one was selected. Do not present a possible training or product fit as a confirmed purchasing need. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"","location":"","description":"short factual description","match_reason":"why it matches the requested name, category, or location","matched_offerings":["publicly described services or products"],"employee_band":"Unknown","employee_size_confidence":"sourced|estimated|unknown","source_urls":["URL returned by Google Search"]}]}. source_urls must be copied exactly from Google Search results and support that company; omit any candidate without a supporting source URL. Do not invent URLs, contacts, or facts. Return fewer results rather than weak matches.`);
     if (!Array.isArray(data.prospects)) throw new Error('Company search returned an invalid response.');
     const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products', 'faith_based', 'private_sector'];
-    const groundedSources = new Map(sources.map((source) => [source.url, source]));
-    return data.prospects.slice(0, 20).filter((item: any) => item.company_name && Array.isArray(item.source_urls) && item.source_urls.some((url: unknown) => typeof url === 'string' && groundedSources.has(url))).map((item: any, index: number) => ({
+    const groundedSources = new Map(sources.map((source) => [normalizeSourceUrl(source.url), source]));
+    return data.prospects.slice(0, 20).filter((item: any) => item.company_name && Array.isArray(item.source_urls) && item.source_urls.some((url: unknown) => typeof url === 'string' && groundedSources.has(normalizeSourceUrl(url)))).filter((item: any) => !employeeBand || item.employee_band === employeeBand).map((item: any, index: number) => ({
       id: `company-search-${Date.now()}-${index}`, company_name: String(item.company_name).slice(0, 200), website: String(item.website || '').slice(0, 300),
       industry_id: allowedIndustries.includes(item.industry_id) ? item.industry_id : 'digital_products', company_type: String(item.company_type || 'Company').slice(0, 100),
       location: String(item.location || location || 'Not established').slice(0, 160), description: String(item.description || '').slice(0, 1000),
       match_reason: String(item.match_reason || '').slice(0, 1000), matched_offerings: Array.isArray(item.matched_offerings) ? item.matched_offerings.filter((value: unknown) => typeof value === 'string').slice(0, 10) : [],
-      sources: item.source_urls.filter((url: unknown) => typeof url === 'string' && groundedSources.has(url)).map((url: string) => groundedSources.get(url)!), discovered_at: new Date().toISOString(),
+      employee_band: EMPLOYEE_BANDS.includes(item.employee_band) ? item.employee_band : 'Unknown',
+      employee_size_confidence: EMPLOYEE_BANDS.includes(item.employee_band) ? (item.employee_size_confidence === 'sourced' ? 'sourced' : 'estimated') : 'unknown',
+      sources: item.source_urls.filter((url: unknown) => typeof url === 'string' && groundedSources.has(normalizeSourceUrl(url))).map((url: string) => groundedSources.get(normalizeSourceUrl(url))!), discovered_at: new Date().toISOString(),
     }));
   }
 

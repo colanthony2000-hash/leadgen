@@ -202,7 +202,8 @@ app.post('/api/profile/prospects', requireRoles('owner', 'admin'), async (req: R
   if (!profile.profile_approved_at) return res.status(409).json({ error: 'Review and approve your business profile before searching for prospects.' });
   if (!profile.offerings.length) return res.status(409).json({ error: 'Add or approve at least one offering before searching for prospects.' });
   try {
-    const matches = await worker.findBusinessProspects(profile);
+    const employeeBand = typeof req.body?.employee_band === 'string' ? req.body.employee_band : undefined;
+    const matches = await worker.findBusinessProspects(profile, { employee_band: employeeBand });
     res.json(matches);
   } catch (error: any) {
     res.status(400).json({ error: error?.message || 'Prospect search failed.' });
@@ -215,6 +216,7 @@ app.post('/api/company-search', requireRoles('owner', 'admin', 'manager', 'membe
       company_name: typeof req.body?.company_name === 'string' ? req.body.company_name : undefined,
       category: typeof req.body?.category === 'string' ? req.body.category : undefined,
       location: typeof req.body?.location === 'string' ? req.body.location : undefined,
+      employee_band: typeof req.body?.employee_band === 'string' ? req.body.employee_band : undefined,
     });
     res.json(results);
   } catch (error: any) {

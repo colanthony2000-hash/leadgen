@@ -134,6 +134,29 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+function profileStorageKey(tenantId: string, demoMode: boolean): string {
+  return demoMode ? 'jeneconk_bii_profile' : `jeneconk_bii_profile_${tenantId}`;
+}
+
+function readStoredProfile(key: string): BusinessProfile | null {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) as BusinessProfile : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeProfile(key: string, profile: BusinessProfile): void {
+  try { localStorage.setItem(key, JSON.stringify(profile)); } catch { /* storage may be unavailable or full */ }
+}
+
+function isProfileCacheNewer(localProfile: BusinessProfile, serverProfile: BusinessProfile): boolean {
+  const localTime = Date.parse(localProfile.updated_at || '');
+  const serverTime = Date.parse(serverProfile.updated_at || '');
+  return localProfile.version > serverProfile.version || (Number.isFinite(localTime) && localTime > serverTime);
+}
+
 export const AppProvider: React.FC<{
   children: React.ReactNode;
   user: User;
@@ -173,8 +196,8 @@ export const AppProvider: React.FC<{
   // Industry & Profile
   const [activeIndustry, setActiveIndustry] = useState<IndustryCode | 'all'>('all');
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile>(() => {
-    const saved = demoMode ? localStorage.getItem('jeneconk_bii_profile') : null;
-    return saved ? JSON.parse(saved) : INITIAL_BUSINESS_PROFILE;
+    const cachedProfile = readStoredProfile(profileStorageKey(activeTenantId, demoMode));
+    return cachedProfile || INITIAL_BUSINESS_PROFILE;
   });
 
   // Entities
@@ -274,7 +297,21 @@ export const AppProvider: React.FC<{
       if (!active) return;
 
       const [profile, companyData, contactData, projectData, tenderData, creditData, balanceData, researchData, leadData, taskData, activityData, draftData] = results;
-      if (profile.status === 'fulfilled' && profile.value) setBusinessProfile(profile.value);
+      const storedProfile = readStoredProfile(profileStorageKey(activeTenantId, false));
+      if (profile.status === 'fulfilled' && profile.value) {
+        if (storedProfile && isProfileCacheNewer(storedProfile, profile.value)) {
+          setBusinessProfile(storedProfile);
+          void api.updateProfile(storedProfile).then((syncedProfile) => {
+            setBusinessProfile(syncedProfile);
+            storeProfile(profileStorageKey(activeTenantId, false), syncedProfile);
+          }).catch(() => addToast('warning', 'Using this browser’s saved profile', 'The server could not restore the latest company profile yet. It remains saved in this browser and will retry next time.'));
+        } else {
+          setBusinessProfile(profile.value);
+          storeProfile(profileStorageKey(activeTenantId, false), profile.value);
+        }
+      } else if (storedProfile) {
+        setBusinessProfile(storedProfile);
+      }
       if (companyData.status === 'fulfilled') setCompanies(companyData.value);
       if (contactData.status === 'fulfilled') setContacts(contactData.value);
       if (projectData.status === 'fulfilled') setProjects(projectData.value);
@@ -331,9 +368,8 @@ export const AppProvider: React.FC<{
   }, [creditTransactions, demoMode]);
 
   useEffect(() => {
-    if (!demoMode) return;
-    localStorage.setItem('jeneconk_bii_profile', JSON.stringify(businessProfile));
-  }, [businessProfile, demoMode]);
+    storeProfile(profileStorageKey(activeTenantId, demoMode), businessProfile);
+  }, [businessProfile, demoMode, activeTenantId]);
 
   const switchWorkspace = (tenantId: string) => {
     setActiveTenantId(tenantId);
@@ -830,7 +866,17 @@ ${businessProfile.company_name}`;
       version: businessProfile.version + 1,
       updated_at: new Date().toISOString(),
     };
-    const savedProfile = demoMode ? nextProfile : await api.updateProfile(profileUpdate);
+    storeProfile(profileStorageKey(activeTenantId, demoMode), nextProfile);
+    setBusinessProfile(nextProfile);
+    let savedProfile = nextProfile;
+    if (!demoMode) {
+      try {
+        savedProfile = await api.updateProfile(profileUpdate);
+        storeProfile(profileStorageKey(activeTenantId, false), savedProfile);
+      } catch {
+        addToast('warning', 'Saved in this browser', 'The server did not confirm the save. Your company profile will be retried from this browser when you return.');
+      }
+    }
     setBusinessProfile(savedProfile);
     logAudit('BUSINESS_PROFILE_UPDATED', 'BusinessProfile', businessProfile.id, 'Updated profile and offerings.');
     return savedProfile;

@@ -87,8 +87,8 @@ export class ApiClient {
     return this.request('/api/profile/research', { method: 'POST', body: JSON.stringify(input) });
   }
 
-  async findBusinessProspects(): Promise<BusinessProspectMatch[]> {
-    return this.request('/api/profile/prospects', { method: 'POST' });
+  async findBusinessProspects(input: { employee_band?: string } = {}): Promise<BusinessProspectMatch[]> {
+    return this.request('/api/profile/prospects', { method: 'POST', body: JSON.stringify(input) });
   }
 
   async searchCompanies(input: CompanySearchInput): Promise<BusinessProspectMatch[]> {
