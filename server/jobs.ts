@@ -118,10 +118,10 @@ Visit/search across each supplied site and its pages. Extract the company identi
 
   public async findBusinessProspects(profile: BusinessProfile, filters: { employee_band?: string } = {}): Promise<BusinessProspectMatch[]> {
     const { data, sources } = await this.groundedJson(`Find up to 20 real organizations across Nigeria that could plausibly benefit from or procure the following company's offerings. Search current public information with Google Search. Supplier: ${profile.company_name}; primary website: ${profile.website}; service websites: ${JSON.stringify(profile.service_websites || [])}; summary: ${profile.business_summary}; offerings: ${JSON.stringify(profile.offerings)}; target regions: ${JSON.stringify(profile.target_regions)}; target industries: ${JSON.stringify(profile.target_industries)}; intended customer types: ${JSON.stringify(profile.target_customer_types || [])}; requested employee band: ${filters.employee_band || 'any size'}.
-Actively search beyond large public institutions: include small and independent secondary schools, low-fee private schools, public and private schools, churches and faith-based organizations, private companies and SMEs, NGOs, and training centres when relevant to the supplied offerings. For nationwide Nigeria searches, diversify results across states and regions rather than returning only prominent Lagos organizations. Use school websites and directories, church/denomination or ministry pages, company sites, credible associations, and public announcements as candidate sources. Do not say a prospect currently needs or is buying unless a source establishes it; otherwise label it as a potential fit. Do not force an oil and gas fit unless the offering supports it. For each candidate return employee_band using one of 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+, Unknown. Use a sourced/estimated band only when a public source or credible directory supports it; otherwise Unknown. If an employee band filter was requested, include only candidates in that band. Exclude the supplier itself. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"","location":"","description":"short evidence-based description","match_reason":"why the supplied offering could fit; distinguish inference from sourced fact","matched_offerings":["offering name"],"employee_band":"Unknown","employee_size_confidence":"sourced|estimated|unknown","source_urls":["URL returned by Google Search"]}]}. source_urls should list only matching Google Search URLs; use an empty array when no supporting URL is available. Do not invent people, contact details, procurement, URLs, or facts. Keep genuine candidates and label missing evidence through empty source_urls rather than omitting the candidate.`);
+Actively search beyond prominent listed corporations. Build a balanced shortlist from the actual customer types relevant to the supplied offerings: include small/independent secondary schools, churches/faith-based organizations, private companies/SMEs, NGOs, and training centres when relevant. Across a nationwide search, include candidates from multiple Nigerian states; do not let Lagos or Nigerian Exchange-listed companies dominate. Return at most 3 publicly listed companies and at most 5 Lagos-based organizations, unless the supplied profile explicitly targets listed enterprises or Lagos. Do not fill these groups with weak fits: every candidate must match at least one named offering and intended customer type. Prefer official candidate sites, school/organization directories, credible associations, and public announcements; general search popularity is not evidence of buyer fit. Do not say a prospect currently needs or is buying unless a source establishes it; otherwise label it as a potential fit. Do not force an oil and gas fit unless the offering supports it. For each candidate return employee_band using one of 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+, Unknown. Employee bands from this AI search are unverified estimates; use Unknown when no credible public estimate is available. If an employee band filter was requested, include only candidates in that band. Exclude the supplier itself. Return JSON only: {"prospects":[{"company_name":"","website":"","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"","location":"","description":"short evidence-based description","match_reason":"why the supplied offering could fit; distinguish inference from sourced fact","matched_offerings":["offering name"],"employee_band":"Unknown","employee_size_confidence":"estimated|unknown","source_urls":["URL returned by Google Search"]}]}. source_urls should list only matching Google Search URLs; use an empty array when no supporting URL is available. Do not invent people, contact details, procurement, URLs, or facts. Keep genuine candidates and label missing evidence through empty source_urls rather than omitting the candidate.`);
     if (!Array.isArray(data.prospects)) throw new Error('AI prospect search returned an invalid response.');
     const allowedIndustries: IndustryCode[] = ['oil_and_gas', 'education', 'digital_products', 'faith_based', 'private_sector'];
-    return data.prospects.slice(0, 20).filter((item: any) => item.company_name).filter((item: any) => !filters.employee_band || item.employee_band === filters.employee_band).map((item: any, index: number) => {
+    const mapped = data.prospects.slice(0, 20).filter((item: any) => item.company_name).filter((item: any) => !filters.employee_band || item.employee_band === filters.employee_band).map((item: any, index: number) => {
       const matchedSources = candidateSources(item, sources);
       return ({
       id: `prospect-${Date.now()}-${index}`, company_name: String(item.company_name).slice(0, 200), website: String(item.website || '').slice(0, 300),
@@ -129,10 +129,27 @@ Actively search beyond large public institutions: include small and independent 
       location: String(item.location || 'Not established').slice(0, 160), description: String(item.description || '').slice(0, 1000),
       match_reason: String(item.match_reason || '').slice(0, 1000), matched_offerings: Array.isArray(item.matched_offerings) ? item.matched_offerings.filter((value: unknown) => typeof value === 'string').slice(0, 10) : [],
       employee_band: EMPLOYEE_BANDS.includes(item.employee_band) ? item.employee_band : 'Unknown',
-      employee_size_confidence: EMPLOYEE_BANDS.includes(item.employee_band) ? (item.employee_size_confidence === 'sourced' ? 'sourced' : 'estimated') : 'unknown',
+      employee_size_confidence: EMPLOYEE_BANDS.includes(item.employee_band) ? 'estimated' : 'unknown',
       evidence_status: matchedSources.length ? 'grounded' as const : 'needs_verification' as const,
       sources: matchedSources, discovered_at: new Date().toISOString(),
     });
+    });
+    const profileTargetsListedCompanies = JSON.stringify([profile.target_customer_types, profile.business_summary, profile.offerings]).toLowerCase().includes('listed company');
+    const profileTargetsLagos = (profile.target_regions || []).some((region) => region.toLowerCase().includes('lagos'));
+    let listedCount = 0;
+    let lagosCount = 0;
+    const seen = new Set<string>();
+    return mapped.filter((match: BusinessProspectMatch) => {
+      const nameKey = match.company_name.trim().toLowerCase();
+      if (seen.has(nameKey)) return false;
+      seen.add(nameKey);
+      const listed = /\b(plc|public limited|listed on|nigerian exchange|ngx:)\b/i.test(`${match.company_type} ${match.description}`);
+      const lagos = /\blagos\b/i.test(match.location);
+      if (listed && !profileTargetsListedCompanies && listedCount >= 3) return false;
+      if (lagos && !profileTargetsLagos && lagosCount >= 5) return false;
+      if (listed) listedCount += 1;
+      if (lagos) lagosCount += 1;
+      return true;
     });
   }
 
