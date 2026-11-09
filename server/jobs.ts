@@ -87,13 +87,20 @@ export class BackgroundJobWorker {
     const apiKey = process.env.BRAVE_SEARCH_API_KEY?.trim();
     if (!apiKey) return this.groundedJson(prompt);
     if (!this.aiClient) throw new Error('AI research is unavailable because GEMINI_API_KEY is not configured.');
-    const params = new URLSearchParams({ q: query.slice(0, 400), country: 'NG', search_lang: 'en', count: '20', safesearch: 'moderate' });
+    const boundedQuery = query.trim().split(/\s+/u).slice(0, 70).join(' ').slice(0, 550);
+    const params = new URLSearchParams({ q: boundedQuery, country: 'NG', search_lang: 'en', count: '20', safesearch: 'moderate', result_filter: 'web' });
     const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
       headers: { 'X-Subscription-Token': apiKey, Accept: 'application/json' },
       signal: AbortSignal.timeout(12000),
     });
     if (!response.ok) {
-      const detail = response.status === 401 || response.status === 403 ? 'Check the Brave Search API key and account access.' : response.status === 429 ? 'Brave Search rate or credit limit was reached.' : `Brave Search returned HTTP ${response.status}.`;
+      const errorText = await response.text().catch(() => '');
+      let providerMessage = '';
+      try {
+        const errorPayload = JSON.parse(errorText);
+        providerMessage = String(errorPayload?.error?.message || errorPayload?.message || '').slice(0, 240);
+      } catch { /* use a friendly status message when Brave returns non-JSON */ }
+      const detail = response.status === 401 || response.status === 403 ? 'Check the Brave Search API key and account access.' : response.status === 429 ? 'Brave Search rate or credit limit was reached.' : `Brave Search returned HTTP ${response.status}${providerMessage ? `: ${providerMessage}` : '.'}`;
       throw new Error(detail);
     }
     const payload = await response.json() as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
