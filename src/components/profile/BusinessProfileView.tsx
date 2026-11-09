@@ -4,17 +4,19 @@ import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
 import { BusinessProfileResearchDraft, BusinessProspectMatch, CompanyProfile, CompanyResearchRecord, IndustryCode } from '../../types';
 import { DIGITAL_PRODUCT_CATEGORIES } from '../../data/digitalProductCategories';
+import { NIGERIAN_BUYER_CATEGORIES, NIGERIAN_SEARCH_LOCATIONS } from '../../data/nigerianBuyerCategories';
 
 const emptyDraft = (profile: ReturnType<typeof useApp>['businessProfile']): BusinessProfileResearchDraft => ({
   company_name: profile.company_name, website: profile.website, service_websites: profile.service_websites || [], country_code: profile.country_code,
   business_summary: profile.business_summary, target_regions: profile.target_regions,
-  target_industries: profile.target_industries, offerings: profile.offerings,
+  target_industries: profile.target_industries, target_customer_types: profile.target_customer_types || [], offerings: profile.offerings,
   certifications: profile.certifications, sources: profile.profile_sources || [],
 });
 
 const fieldClass = 'w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-400 focus:outline-none';
 const industries: Array<{ id: IndustryCode; label: string }> = [
-  { id: 'oil_and_gas', label: 'Oil & Gas / EPC' }, { id: 'education', label: 'Education & STEM' }, { id: 'digital_products', label: 'Digital Products' },
+  { id: 'oil_and_gas', label: 'Oil & Gas / EPC' }, { id: 'education', label: 'Schools & Education' }, { id: 'digital_products', label: 'Digital Products' },
+  { id: 'faith_based', label: 'Churches & Faith Organizations' }, { id: 'private_sector', label: 'Private Companies & SMEs' },
 ];
 
 export const BusinessProfileView: React.FC = () => {
@@ -27,7 +29,7 @@ export const BusinessProfileView: React.FC = () => {
   const [matches, setMatches] = useState<BusinessProspectMatch[]>([]);
   const [companySearchName, setCompanySearchName] = useState('');
   const [companySearchCategory, setCompanySearchCategory] = useState('');
-  const [companySearchLocation, setCompanySearchLocation] = useState('');
+  const [companySearchLocation, setCompanySearchLocation] = useState('Nigeria (nationwide)');
   const [companyResults, setCompanyResults] = useState<BusinessProspectMatch[]>([]);
   const [externalResearch, setExternalResearch] = useState<(BusinessProfileResearchDraft & { researched_name: string }) | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(businessProfile.id);
@@ -56,6 +58,7 @@ export const BusinessProfileView: React.FC = () => {
             id: businessProfile.id, company_name: businessProfile.company_name, website: businessProfile.website, country_code: businessProfile.country_code,
             service_websites: businessProfile.service_websites || [],
             business_summary: businessProfile.business_summary, target_regions: businessProfile.target_regions, target_industries: businessProfile.target_industries,
+            target_customer_types: businessProfile.target_customer_types || [],
             offerings: businessProfile.offerings, certifications: businessProfile.certifications, profile_sources: businessProfile.profile_sources || [],
             profile_approved_at: businessProfile.profile_approved_at || '', approved_prospects: businessProfile.approved_prospects || [], updated_at: businessProfile.updated_at,
           }];
@@ -65,6 +68,7 @@ export const BusinessProfileView: React.FC = () => {
         id: profileId, company_name: draft.company_name, website: draft.website, country_code: draft.country_code,
         service_websites: draft.service_websites,
         business_summary: draft.business_summary, target_regions: draft.target_regions, target_industries: draft.target_industries,
+        target_customer_types: draft.target_customer_types,
         offerings: draft.offerings, certifications: draft.certifications, profile_sources: draft.sources, profile_approved_at: approvedAt,
         approved_prospects: profiles.find((item) => item.id === profileId)?.approved_prospects || [], updated_at: approvedAt,
       };
@@ -73,7 +77,7 @@ export const BusinessProfileView: React.FC = () => {
         id: profileId,
         company_name: draft.company_name, website: draft.website, service_websites: draft.service_websites, country_code: draft.country_code,
         business_summary: draft.business_summary, target_regions: draft.target_regions,
-        target_industries: draft.target_industries, offerings: draft.offerings,
+        target_industries: draft.target_industries, target_customer_types: draft.target_customer_types, offerings: draft.offerings,
         certifications: draft.certifications, profile_sources: draft.sources,
         profile_approved_at: approvedAt, company_profiles: nextProfiles,
         approved_prospects: savedCompany.approved_prospects,
@@ -124,6 +128,7 @@ export const BusinessProfileView: React.FC = () => {
     id: businessProfile.id, company_name: businessProfile.company_name, website: businessProfile.website, country_code: businessProfile.country_code,
     service_websites: businessProfile.service_websites || [],
     business_summary: businessProfile.business_summary, target_regions: businessProfile.target_regions, target_industries: businessProfile.target_industries,
+    target_customer_types: businessProfile.target_customer_types || [],
     offerings: businessProfile.offerings, certifications: businessProfile.certifications, profile_sources: businessProfile.profile_sources || [],
     profile_approved_at: businessProfile.profile_approved_at || '', approved_prospects: businessProfile.approved_prospects || [], updated_at: businessProfile.updated_at,
   }];
@@ -131,7 +136,7 @@ export const BusinessProfileView: React.FC = () => {
   const activateProfile = async (profile: CompanyProfile) => {
     try {
       await updateBusinessProfile({ id: profile.id, company_name: profile.company_name, website: profile.website, service_websites: profile.service_websites || [], country_code: profile.country_code,
-        business_summary: profile.business_summary, target_regions: profile.target_regions, target_industries: profile.target_industries,
+        business_summary: profile.business_summary, target_regions: profile.target_regions, target_industries: profile.target_industries, target_customer_types: profile.target_customer_types || [],
         offerings: profile.offerings, certifications: profile.certifications, profile_sources: profile.profile_sources,
         profile_approved_at: profile.profile_approved_at, approved_prospects: profile.approved_prospects });
       setCompanyName(profile.company_name); setWebsite(profile.website); setServiceWebsitesText((profile.service_websites || []).join('\n')); setEditingProfileId(profile.id); setMatches([]); setDraft(null);
@@ -205,6 +210,7 @@ export const BusinessProfileView: React.FC = () => {
       </div>
       <div><p className="mb-2 text-xs text-slate-300">Industries and markets</p><div className="flex flex-wrap gap-2">{industries.map((industry) => <label key={industry.id} className="flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200"><input type="checkbox" checked={draft.target_industries.includes(industry.id)} onChange={(e) => updateDraft({ target_industries: e.target.checked ? [...draft.target_industries, industry.id] : draft.target_industries.filter((item) => item !== industry.id) })} />{industry.label}</label>)}</div>
         <input className={`${fieldClass} mt-3`} placeholder="Regions served, separated by commas" value={draft.target_regions.join(', ')} onChange={(e) => updateDraft({ target_regions: e.target.value.split(',').map((v) => v.trim()).filter(Boolean) })} /></div>
+      <label className="block space-y-1.5 text-xs text-slate-300">Who could benefit from these services? (separate with commas)<input className={fieldClass} placeholder="Small secondary schools, churches, SMEs…" value={draft.target_customer_types.join(', ')} onChange={(e) => updateDraft({ target_customer_types: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} /></label>
       {!!draft.certifications.length && <div><h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-white"><Award className="h-4 w-4 text-amber-400" />Certifications found (verify before approval)</h3><ul className="space-y-1 text-xs text-slate-300">{draft.certifications.map((cert) => <li key={cert.id}>{cert.name} · {cert.issuer} · validity: {cert.valid_from} to {cert.valid_to}</li>)}</ul></div>}
       <div><h3 className="mb-2 text-sm font-medium text-white">Sources found</h3>{draft.sources.length ? <ul className="space-y-1.5 text-xs">{draft.sources.map((source) => <li key={source.url}><a className="inline-flex items-center gap-1 text-sky-300 hover:underline" href={source.url} target="_blank" rel="noreferrer">{source.title}<ExternalLink className="h-3 w-3" /></a></li>)}</ul> : <p className="text-xs text-slate-500">No web citations available in this preview.</p>}</div>
       <button type="button" onClick={approveProfile} disabled={!!busy || !draft.company_name.trim() || !draft.offerings.some((item) => item.name.trim())} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-50"><Check className="h-4 w-4" />{busy === 'save' ? 'Saving…' : 'Approve and save company profile'}</button>
@@ -214,9 +220,10 @@ export const BusinessProfileView: React.FC = () => {
       <div><h2 className="font-semibold text-white">Search and research any company</h2><p className="mt-1 text-xs text-slate-400">Search by company name, service category, or location. Results include web sources; research a result to build a fuller company record.</p></div>
       <form onSubmit={searchAnyCompany} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <input className={fieldClass} placeholder="Company name" value={companySearchName} onChange={(e) => setCompanySearchName(e.target.value)} />
-        <input list="digital-product-categories" className={fieldClass} placeholder="Category or service" value={companySearchCategory} onChange={(e) => setCompanySearchCategory(e.target.value)} />
-        <datalist id="digital-product-categories">{DIGITAL_PRODUCT_CATEGORIES.map((category) => <option key={category.id} value={category.label} />)}</datalist>
-        <input className={fieldClass} placeholder="City, state, or country" value={companySearchLocation} onChange={(e) => setCompanySearchLocation(e.target.value)} />
+        <input list="buyer-and-product-categories" className={fieldClass} placeholder="Schools, churches, SMEs, or service" value={companySearchCategory} onChange={(e) => setCompanySearchCategory(e.target.value)} />
+        <datalist id="buyer-and-product-categories">{[...NIGERIAN_BUYER_CATEGORIES, ...DIGITAL_PRODUCT_CATEGORIES.map((category) => category.label)].map((category) => <option key={category} value={category} />)}</datalist>
+        <input list="nigerian-search-locations" className={fieldClass} placeholder="State, city, or Nigeria nationwide" value={companySearchLocation} onChange={(e) => setCompanySearchLocation(e.target.value)} />
+        <datalist id="nigerian-search-locations">{NIGERIAN_SEARCH_LOCATIONS.map((location) => <option key={location} value={location} />)}</datalist>
         <button disabled={!!busy || (!companySearchName.trim() && !companySearchCategory.trim() && !companySearchLocation.trim())} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy === 'companySearch' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Search companies</button>
       </form>
       {companyResults.map((company) => <article key={company.id} className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/70 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-semibold text-white">{company.company_name}</h3><p className="text-xs text-slate-400">{company.company_type} · {company.location}{company.website ? ` · ${company.website}` : ''}</p></div><button type="button" disabled={!!busy} onClick={() => researchCompany(company)} className="rounded-lg border border-sky-400/30 px-3 py-2 text-xs font-semibold text-sky-200 disabled:opacity-50">{busy === 'companyResearch' ? 'Researching…' : 'Research company'}</button></div><p className="text-sm text-slate-300">{company.description}</p><p className="text-xs text-slate-400">{company.match_reason}</p><div className="flex flex-wrap gap-2">{company.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">{source.title}<ExternalLink className="h-3 w-3" /></a>)}</div></article>)}

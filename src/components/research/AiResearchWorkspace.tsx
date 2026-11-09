@@ -82,6 +82,8 @@ export const AiResearchWorkspace: React.FC<AiResearchWorkspaceProps> = ({
     oil_and_gas: 'Oil & Gas / EPC',
     education: 'Education & STEM',
     digital_products: 'Digital Products',
+    faith_based: 'Churches & Faith Organizations',
+    private_sector: 'Private Companies & SMEs',
   }[activeIndustry];
   const displayedFacts = activeJobResult?.result ? consolidateGroundedFacts(activeJobResult.result.known_facts) : [];
   const displayedProcurementSignals = activeJobResult?.result ? uniqueResearchText(activeJobResult.result.procurement_signals) : [];

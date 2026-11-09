@@ -98,6 +98,24 @@ export class Database {
 
   constructor() {
     this.data = this.load();
+    this.migrateUnchangedJeneconkDemoProfile();
+  }
+
+  private migrateUnchangedJeneconkDemoProfile(): void {
+    const tenantId = 'tenant-jeneconk-hq';
+    const current = this.data.business_profiles?.[tenantId];
+    if (
+      current?.id === 'bp-jeneconk-01' &&
+      current.company_name === 'Jeneconk Integrated Global Solutions Limited' &&
+      current.version === 2 &&
+      current.updated_at === '2026-11-05T14:30:00Z' &&
+      current.offerings?.some((offering) => offering.id === 'off-01' && offering.name === 'Subsea Pipeline Ultrasonic & Non-Destructive Inspection') &&
+      !current.profile_approved_at &&
+      !current.company_profiles?.length
+    ) {
+      this.data.business_profiles[tenantId] = { ...INITIAL_BUSINESS_PROFILE, id: current.id, tenant_id: tenantId };
+      this.save();
+    }
   }
 
   private load(): DatabaseSchema {

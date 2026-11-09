@@ -71,6 +71,8 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
     oil_and_gas: 'Oil & Gas / EPC',
     education: 'Education & STEM',
     digital_products: 'Digital Products',
+    faith_based: 'Churches & Faith Organizations',
+    private_sector: 'Private Companies & SMEs',
   }[activeIndustry];
 
   return (
@@ -107,7 +109,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
             </div>
 
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Industrial Opportunity & Intelligence Overview
+              Company & Organization Intelligence Overview
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
               Monitoring workspace intelligence for {sectorLabel.toLowerCase()}, including companies, verified decision-makers, and tender notices.

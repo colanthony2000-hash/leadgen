@@ -8,7 +8,7 @@ export type WorkspaceType = 'company' | 'personal';
 
 export type RoleCode = 'owner' | 'admin' | 'manager' | 'member' | 'read_only';
 
-export type IndustryCode = 'oil_and_gas' | 'education' | 'digital_products';
+export type IndustryCode = 'oil_and_gas' | 'education' | 'digital_products' | 'faith_based' | 'private_sector';
 
 export interface Tenant {
   id: string;
@@ -88,6 +88,7 @@ export interface BusinessProfileResearchDraft {
   business_summary: string;
   target_regions: string[];
   target_industries: IndustryCode[];
+  target_customer_types: string[];
   offerings: BusinessOffering[];
   certifications: BusinessCertification[];
   sources: ResearchSource[];
@@ -102,6 +103,7 @@ export interface CompanyProfile {
   business_summary: string;
   target_regions: string[];
   target_industries: IndustryCode[];
+  target_customer_types?: string[];
   offerings: BusinessOffering[];
   certifications: BusinessCertification[];
   profile_sources: ResearchSource[];
@@ -141,6 +143,7 @@ export interface BusinessProfile {
   business_summary: string;
   target_regions: string[];
   target_industries: IndustryCode[];
+  target_customer_types?: string[];
   offerings: BusinessOffering[];
   certifications: BusinessCertification[];
   profile_sources?: ResearchSource[];

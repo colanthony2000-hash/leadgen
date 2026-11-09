@@ -64,6 +64,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     { id: 'oil_and_gas', label: 'Oil & Gas / EPC' },
     { id: 'education', label: 'Education & STEM' },
     { id: 'digital_products', label: 'Digital Products' },
+    { id: 'faith_based', label: 'Churches & Faith' },
+    { id: 'private_sector', label: 'Private Companies' },
   ];
 
   return (
