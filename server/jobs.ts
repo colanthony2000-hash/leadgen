@@ -88,9 +88,11 @@ export class BackgroundJobWorker {
     if (!apiKey) return this.groundedJson(prompt);
     if (!this.aiClient) throw new Error('AI research is unavailable because GEMINI_API_KEY is not configured.');
     const boundedQuery = query.trim().split(/\s+/u).slice(0, 70).join(' ').slice(0, 550);
-    const params = new URLSearchParams({ q: boundedQuery, country: 'NG', search_lang: 'en', count: '20', safesearch: 'moderate', result_filter: 'web' });
+    // Brave's Web Search endpoint has a limited country enum and does not accept NG.
+    // Keep Nigeria in the user query instead of sending the unsupported country parameter.
+    const params = new URLSearchParams({ q: boundedQuery, search_lang: 'en', count: '20', safesearch: 'moderate', result_filter: 'web' });
     const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-      headers: { 'X-Subscription-Token': apiKey, Accept: 'application/json' },
+      headers: { 'X-Subscription-Token': apiKey, Accept: 'application/json', 'Cache-Control': 'no-cache' },
       signal: AbortSignal.timeout(12000),
     });
     if (!response.ok) {
@@ -98,7 +100,9 @@ export class BackgroundJobWorker {
       let providerMessage = '';
       try {
         const errorPayload = JSON.parse(errorText);
-        providerMessage = String(errorPayload?.error?.message || errorPayload?.message || '').slice(0, 240);
+        const validationErrors = errorPayload?.error?.meta?.errors;
+        const validationDetail = Array.isArray(validationErrors) ? validationErrors.map((item: any) => `${item?.loc?.slice?.(-1)?.[0] || 'parameter'}: ${item?.msg || ''}`).join('; ') : '';
+        providerMessage = String(validationDetail || errorPayload?.error?.detail || errorPayload?.error?.message || errorPayload?.message || '').slice(0, 240);
       } catch { /* use a friendly status message when Brave returns non-JSON */ }
       const detail = response.status === 401 || response.status === 403 ? 'Check the Brave Search API key and account access.' : response.status === 429 ? 'Brave Search rate or credit limit was reached.' : `Brave Search returned HTTP ${response.status}${providerMessage ? `: ${providerMessage}` : '.'}`;
       throw new Error(detail);
