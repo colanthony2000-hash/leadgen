@@ -226,6 +226,21 @@ app.post('/api/company-search', requireRoles('owner', 'admin', 'manager', 'membe
   }
 });
 
+app.post('/api/need-search', requireRoles('owner', 'admin', 'manager', 'member'), async (req: Request, res: Response) => {
+  try {
+    const need = typeof req.body?.need === 'string' ? req.body.need : '';
+    const mode = ['buying', 'jobs', 'both'].includes(req.body?.mode) ? req.body.mode : 'both';
+    const results = await worker.searchByNeed({
+      need,
+      location: typeof req.body?.location === 'string' ? req.body.location : undefined,
+      mode,
+    });
+    res.json(results);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Need and job search failed.' });
+  }
+});
+
 app.put('/api/profile/scoring', requireRoles('owner', 'admin', 'manager'), (req: Request, res: Response) => {
   const tenantReq = req as TenantRequest;
   const { scoring_weights } = req.body;

@@ -81,11 +81,23 @@ export interface BusinessProspectMatch {
   sources: ResearchSource[];
   discovered_at: string;
   approved_at?: string;
+  result_kind?: 'buying_need' | 'job_opening';
+  job_title?: string;
+  employment_type?: string;
+  posted_date?: string;
+}
+
+export type NeedSearchMode = 'buying' | 'jobs' | 'both';
+
+export interface NeedSearchInput {
+  need: string;
+  location?: string;
+  mode: NeedSearchMode;
 }
 
 export interface ProspectSearchRecord {
   id: string;
-  search_type: 'buyers' | 'companies';
+  search_type: 'buyers' | 'companies' | 'needs';
   title: string;
   query_summary: string;
   results: BusinessProspectMatch[];

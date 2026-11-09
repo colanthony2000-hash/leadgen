@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Award, Check, ExternalLink, Loader2, Save, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
-import { BusinessProfileResearchDraft, BusinessProspectMatch, CompanyProfile, CompanyResearchRecord, IndustryCode, ProspectSearchRecord } from '../../types';
+import { BusinessProfileResearchDraft, BusinessProspectMatch, CompanyProfile, CompanyResearchRecord, IndustryCode, NeedSearchMode, ProspectSearchRecord } from '../../types';
 import { DIGITAL_PRODUCT_CATEGORIES } from '../../data/digitalProductCategories';
 import { NIGERIAN_BUYER_CATEGORIES, NIGERIAN_SEARCH_LOCATIONS } from '../../data/nigerianBuyerCategories';
 
@@ -36,22 +36,27 @@ export const BusinessProfileView: React.FC = () => {
   const [companyResults, setCompanyResults] = useState<BusinessProspectMatch[]>([]);
   const [companyEmployeeBand, setCompanyEmployeeBand] = useState('');
   const [hasSearchedCompanies, setHasSearchedCompanies] = useState(false);
+  const [needQuery, setNeedQuery] = useState('');
+  const [needLocation, setNeedLocation] = useState('Nigeria (nationwide)');
+  const [needMode, setNeedMode] = useState<NeedSearchMode>('both');
+  const [needResults, setNeedResults] = useState<BusinessProspectMatch[]>([]);
+  const [hasSearchedNeeds, setHasSearchedNeeds] = useState(false);
   const [externalResearch, setExternalResearch] = useState<(BusinessProfileResearchDraft & { researched_name: string }) | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(businessProfile.id);
-  const [busy, setBusy] = useState<'research' | 'save' | 'prospects' | 'companySearch' | 'companyResearch' | ''>('');
+  const [busy, setBusy] = useState<'research' | 'save' | 'prospects' | 'companySearch' | 'companyResearch' | 'needSearch' | ''>('');
   const [message, setMessage] = useState('');
 
   const saveSearchResults = async (searchType: ProspectSearchRecord['search_type']) => {
-    const results = searchType === 'buyers' ? matches : companyResults;
+    const results = searchType === 'buyers' ? matches : searchType === 'companies' ? companyResults : needResults;
     if (!results.length) return;
     const createdAt = new Date().toISOString();
     const record: ProspectSearchRecord = {
       id: `prospect-search-${Date.now()}`,
       search_type: searchType,
-      title: searchType === 'buyers' ? `Potential buyers for ${businessProfile.company_name}` : `Company search: ${companySearchCategory || companySearchName || companySearchLocation}`,
+      title: searchType === 'buyers' ? `Potential buyers for ${businessProfile.company_name}` : searchType === 'companies' ? `Company search: ${companySearchCategory || companySearchName || companySearchLocation}` : `Need/job search: ${needQuery}`,
       query_summary: searchType === 'buyers'
         ? `Customers: ${(businessProfile.target_customer_types || []).join(', ') || 'not specified'} · Regions: ${businessProfile.target_regions.join(', ') || 'Nigeria'} · Employee size: ${buyerEmployeeBand || 'any'}`
-        : `Name: ${companySearchName || 'any'} · Category: ${companySearchCategory || 'any'} · Location: ${companySearchLocation || 'Nigeria'} · Employee size: ${companyEmployeeBand || 'any'}`,
+        : searchType === 'companies' ? `Name: ${companySearchName || 'any'} · Category: ${companySearchCategory || 'any'} · Location: ${companySearchLocation || 'Nigeria'} · Employee size: ${companyEmployeeBand || 'any'}` : `Search type: ${needMode} · Need/job: ${needQuery} · Location: ${needLocation}`,
       results,
       created_at: createdAt,
     };
@@ -65,9 +70,12 @@ export const BusinessProfileView: React.FC = () => {
     if (record.search_type === 'buyers') {
       setMatches(record.results);
       setHasSearchedBuyers(true);
-    } else {
+    } else if (record.search_type === 'companies') {
       setCompanyResults(record.results);
       setHasSearchedCompanies(true);
+    } else {
+      setNeedResults(record.results);
+      setHasSearchedNeeds(true);
     }
     setMessage(`Reopened ${record.results.length} saved results.`);
   };
@@ -142,6 +150,15 @@ export const BusinessProfileView: React.FC = () => {
     try {
       setCompanyResults(await api.searchCompanies({ company_name: companySearchName, category: companySearchCategory, location: companySearchLocation, employee_band: companyEmployeeBand || undefined }));
     } catch (error: any) { setMessage(error.message || 'Company search failed.'); }
+    finally { setBusy(''); }
+  };
+
+  const searchByNeed = async (event: React.FormEvent) => {
+    event.preventDefault(); setBusy('needSearch'); setMessage(''); setNeedResults([]); setHasSearchedNeeds(true);
+    try {
+      if (isDemoMode) throw new Error('Live need and job searches are available after signing in with the search provider configured on the server.');
+      setNeedResults(await api.searchByNeed({ need: needQuery, location: needLocation, mode: needMode }));
+    } catch (error: any) { setMessage(error.message || 'Need and job search failed.'); }
     finally { setBusy(''); }
   };
 
@@ -276,6 +293,20 @@ export const BusinessProfileView: React.FC = () => {
       {isDemoMode && <p className="text-xs text-slate-500">Live company search and research need a signed-in workspace with the server Gemini key configured.</p>}
     </section>
 
+    <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
+      <div><h2 className="font-semibold text-white">Search by service need or job type</h2><p className="mt-1 text-xs text-slate-400">Search public buyer requests and current vacancies. These are different signals, so every result is labelled and linked to its source.</p></div>
+      <form onSubmit={searchByNeed} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <input className={fieldClass} placeholder="e.g. STEM trainer, web designer, accountant" value={needQuery} onChange={(event) => setNeedQuery(event.target.value)} maxLength={160} required />
+        <input list="nigerian-search-locations" className={fieldClass} placeholder="State, city, or Nigeria nationwide" value={needLocation} onChange={(event) => setNeedLocation(event.target.value)} />
+        <select aria-label="Search for buying needs, jobs, or both" className={fieldClass} value={needMode} onChange={(event) => setNeedMode(event.target.value as NeedSearchMode)}><option value="both">Buying needs and job openings</option><option value="buying">Buying/service needs</option><option value="jobs">Job openings</option></select>
+        <button disabled={!!busy || !needQuery.trim()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy === 'needSearch' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Search needs and jobs</button>
+      </form>
+      {needResults.length > 0 && <button type="button" onClick={() => void saveSearchResults('needs')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-violet-300/30 px-3 py-2 text-sm font-semibold text-violet-200"><Save className="h-4 w-4" />Save {needResults.length} results</button>}
+      {needResults.map((result) => <article key={result.id} className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/70 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${result.result_kind === 'job_opening' ? 'bg-sky-400/10 text-sky-200' : 'bg-amber-400/10 text-amber-200'}`}>{result.result_kind === 'job_opening' ? 'Job opening' : 'Buying/service need'}</span><h3 className="mt-2 font-semibold text-white">{result.job_title || result.company_name}</h3><p className="text-xs text-slate-400">{result.company_name}{result.company_type ? ` · ${result.company_type}` : ''} · {result.location}</p>{result.employment_type && <p className="mt-1 text-xs text-slate-400">{result.employment_type}{result.posted_date && result.posted_date !== 'Unknown' ? ` · Posted ${result.posted_date}` : ''}</p>}</div><p className={`text-xs ${result.evidence_status === 'grounded' ? 'text-emerald-300' : 'text-amber-300'}`}>{result.evidence_status === 'grounded' ? 'Source linked' : 'Verify the listing before acting'}</p></div><p className="text-sm text-slate-300">{result.description}</p><p className="text-xs text-violet-200">{result.match_reason}</p><div className="flex flex-wrap gap-2">{result.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">{source.title}<ExternalLink className="h-3 w-3" /></a>)}</div></article>)}
+      {hasSearchedNeeds && needResults.length === 0 && !busy && !message && <p className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">No public buyer requests or matching job openings were found for this search. Try a shorter job title or broader location.</p>}
+      {isDemoMode && <p className="text-xs text-slate-500">Live need and job searches require a signed-in workspace with Brave Search configured on the server.</p>}
+    </section>
+
     {businessProfile.profile_approved_at && <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">3. Find organizations that could use your offerings</h2><p className="mt-1 text-xs text-slate-400">Search results are potential fits. Employee count is shown only when publicly supported or estimated; review the sources before approving.</p></div>
         <div className="flex flex-col gap-2 sm:flex-row"><select aria-label="Filter potential buyers by employee count" className={fieldClass} value={buyerEmployeeBand} onChange={(e) => setBuyerEmployeeBand(e.target.value)}><option value="">Any employee count</option>{employeeBands.map((band) => <option key={band} value={band}>{band} employees</option>)}</select><button type="button" disabled={!!busy} onClick={searchProspects} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 text-sm font-semibold text-amber-200 disabled:opacity-50">{busy === 'prospects' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Find potential buyers</button></div></div>
@@ -283,8 +314,8 @@ export const BusinessProfileView: React.FC = () => {
       {matches.length > 0 && <button type="button" onClick={() => void saveSearchResults('buyers')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-400/30 px-3 py-2 text-sm font-semibold text-amber-200"><Save className="h-4 w-4" />Save {matches.length} results</button>}
       {hasSearchedBuyers && matches.length === 0 && !busy && !message && <p className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">Search returned no candidates for this profile. Check that its services and customer types are specific, then try again without an employee-size filter.</p>}
       <div className="space-y-2"><h3 className="text-sm font-semibold text-white">Approved prospect matches ({businessProfile.approved_prospects?.length || 0})</h3>{(businessProfile.approved_prospects || []).map((match) => <article key={match.id} className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/70 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-white">{match.company_name}</p><p className="text-xs text-slate-400">{match.location} · Approved {new Date(match.approved_at || '').toLocaleDateString()}</p></div><button type="button" onClick={() => removeMatch(match.id)} className="self-start rounded-lg p-2 text-slate-400 hover:text-rose-400" title="Remove approved match"><Trash2 className="h-4 w-4" /></button></article>)}</div>
-      {(businessProfile.saved_prospect_searches || []).length > 0 && <div className="space-y-2"><h3 className="text-sm font-semibold text-white">Saved search results ({businessProfile.saved_prospect_searches?.length})</h3>{businessProfile.saved_prospect_searches?.map((record) => <article key={record.id} className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-white">{record.title}</p><p className="text-xs text-slate-400">{record.query_summary}</p><p className="mt-1 text-xs text-slate-500">{record.results.length} results · Saved {new Date(record.created_at).toLocaleString()}</p></div><div className="flex gap-2"><button type="button" onClick={() => reopenSavedSearch(record)} className="rounded-lg border border-sky-400/30 px-3 py-2 text-xs font-semibold text-sky-200">Open results</button><button type="button" onClick={() => void removeSavedSearch(record.id)} className="rounded-lg p-2 text-slate-400 hover:text-rose-400" title="Delete saved search"><Trash2 className="h-4 w-4" /></button></div></article>)}</div>}
     </section>}
+    {(businessProfile.saved_prospect_searches || []).length > 0 && <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6"><h2 className="text-sm font-semibold text-white">Saved search results ({businessProfile.saved_prospect_searches?.length})</h2>{businessProfile.saved_prospect_searches?.map((record) => <article key={record.id} className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-white">{record.title}</p><p className="text-xs text-slate-400">{record.query_summary}</p><p className="mt-1 text-xs text-slate-500">{record.results.length} results · Saved {new Date(record.created_at).toLocaleString()}</p></div><div className="flex gap-2"><button type="button" onClick={() => reopenSavedSearch(record)} className="rounded-lg border border-sky-400/30 px-3 py-2 text-xs font-semibold text-sky-200">Open results</button><button type="button" onClick={() => void removeSavedSearch(record.id)} className="rounded-lg p-2 text-slate-400 hover:text-rose-400" title="Delete saved search"><Trash2 className="h-4 w-4" /></button></div></article>)}</section>}
     {message && <p role="status" className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-300">{message}</p>}
   </div>;
 };

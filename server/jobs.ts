@@ -1,6 +1,6 @@
 import { db, AsyncBackgroundJob } from './db';
 import { GoogleGenAI } from '@google/genai';
-import { ResearchJob, CreditTransaction, BusinessProfileResearchDraft, BusinessProspectMatch, BusinessProfile, IndustryCode, CompanySearchInput } from '../src/types';
+import { ResearchJob, CreditTransaction, BusinessProfileResearchDraft, BusinessProspectMatch, BusinessProfile, IndustryCode, CompanySearchInput, NeedSearchInput } from '../src/types';
 import { DIGITAL_PRODUCT_CATEGORIES, expandDigitalProductCategory } from '../src/data/digitalProductCategories';
 
 const GEMINI_RESEARCH_MODEL = 'gemini-3.8-flash';
@@ -224,6 +224,48 @@ For Nigeria-wide education searches, include small independent and low-fee secon
       sources: matchedSources, discovered_at: new Date().toISOString(),
     });
     });
+  }
+
+  public async searchByNeed(input: NeedSearchInput): Promise<BusinessProspectMatch[]> {
+    const need = String(input.need || '').trim().slice(0, 160);
+    const location = String(input.location || 'Nigeria (nationwide)').trim().slice(0, 100);
+    if (need.length < 2) throw new Error('Enter a job title, skill, product, or service need to search.');
+    const types: Array<'buying_need' | 'job_opening'> = input.mode === 'buying' ? ['buying_need'] : input.mode === 'jobs' ? ['job_opening'] : ['buying_need', 'job_opening'];
+    const resultsByType = await Promise.all(types.map(async (resultKind) => {
+      const buyingSearch = resultKind === 'buying_need';
+      const query = buyingSearch
+        ? `${need} seeking provider service request RFP procurement ${location} Nigeria`
+        : `${need} current job vacancy hiring careers ${location} Nigeria`;
+      const prompt = buyingSearch
+        ? `Find up to 10 public requests from Nigerian organizations or individuals who are seeking this product/service: "${need}". Search for published requests, requests for proposals, procurement/tender notices, public posts asking for a provider, or other explicit buying-intent signals. Do not return businesses merely selling the service. Only include a buyer when the search result page gives evidence that it is seeking the service or product. Exclude private personal contact details; use the public organization name or "Individual buyer" if the public page does not establish a business identity. Location focus: ${location}. Use only facts supported by the supplied search results. Return JSON only: {"results":[{"company_name":"organization name or Individual buyer","website":"official website if present in result URLs, otherwise empty","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"organization, individual buyer, or public institution","location":"","description":"what the public page says the buyer is seeking","match_reason":"why this is a relevant public buying signal; do not imply a signed contract","matched_offerings":["requested service/product phrase"],"source_urls":["exact supplied search URL"]}]}. Include only URLs from the supplied search results; do not invent names, contact details, dates, or URLs.`
+        : `Find up to 10 currently open job vacancies matching the role or job type: "${need}" in ${location}. Search employer career pages, reputable job boards, and public recruitment announcements. Only include listings that appear open for applications; do not return old or closed listings. These are job opportunities for job seekers, not claims that the employer wants to buy a service. Use only facts supported by the supplied search results. Return JSON only: {"results":[{"company_name":"employer name","website":"employer website if present in result URLs, otherwise empty","industry_id":"oil_and_gas|education|digital_products|faith_based|private_sector","company_type":"Employer · Job opening","location":"","job_title":"exact advertised role","employment_type":"full-time, part-time, contract, internship, or Unknown","posted_date":"date only if stated, otherwise Unknown","description":"brief duties or requirements from the listing","match_reason":"why the role matches the requested job type","matched_offerings":[],"source_urls":["exact supplied search URL"]}]}. Include only URLs from the supplied search results; do not invent names, contact details, dates, or URLs.`;
+      const { data, sources } = await this.searchJson(prompt, query);
+      if (!Array.isArray(data.results)) throw new Error(`${buyingSearch ? 'Buying-needs' : 'Job-opening'} search returned an invalid response.`);
+      return data.results.slice(0, 10).filter((item: any) => item.company_name).map((item: any, index: number): BusinessProspectMatch => {
+        const matchedSources = candidateSources(item, sources);
+        return {
+          id: `need-search-${resultKind}-${Date.now()}-${index}`,
+          company_name: String(item.company_name).slice(0, 200), website: String(item.website || '').slice(0, 300),
+          industry_id: ['oil_and_gas', 'education', 'digital_products', 'faith_based', 'private_sector'].includes(item.industry_id) ? item.industry_id : 'private_sector',
+          company_type: String(item.company_type || (buyingSearch ? 'Buying need' : 'Job opening')).slice(0, 100),
+          location: String(item.location || location).slice(0, 160), description: String(item.description || '').slice(0, 1000),
+          match_reason: String(item.match_reason || '').slice(0, 1000),
+          matched_offerings: Array.isArray(item.matched_offerings) ? item.matched_offerings.filter((value: unknown) => typeof value === 'string').slice(0, 10) : [],
+          employee_band: 'Unknown', employee_size_confidence: 'unknown',
+          evidence_status: matchedSources.length ? 'grounded' : 'needs_verification', sources: matchedSources,
+          discovered_at: new Date().toISOString(), result_kind: resultKind,
+          ...(typeof item.job_title === 'string' ? { job_title: item.job_title.slice(0, 160) } : {}),
+          ...(typeof item.employment_type === 'string' ? { employment_type: item.employment_type.slice(0, 80) } : {}),
+          ...(typeof item.posted_date === 'string' ? { posted_date: item.posted_date.slice(0, 80) } : {}),
+        };
+      });
+    }));
+    const unique = new Map<string, BusinessProspectMatch>();
+    for (const result of resultsByType.flat()) {
+      const key = `${result.result_kind}:${result.company_name.toLowerCase()}:${result.job_title?.toLowerCase() || ''}`;
+      if (!unique.has(key)) unique.set(key, result);
+    }
+    return [...unique.values()].slice(0, 20);
   }
 
   // Trigger execution of a queued job asynchronously
