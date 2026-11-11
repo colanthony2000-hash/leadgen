@@ -11,6 +11,7 @@ import {
   Project,
   ProcurementNotice,
   ResearchJob,
+  BusinessProspectSearchInput,
   CrmLead,
   Task,
   Activity,
@@ -88,7 +89,7 @@ export class ApiClient {
     return this.request('/api/profile/research', { method: 'POST', body: JSON.stringify(input) });
   }
 
-  async findBusinessProspects(input: { employee_band?: string } = {}): Promise<BusinessProspectMatch[]> {
+  async findBusinessProspects(input: BusinessProspectSearchInput = {}): Promise<BusinessProspectMatch[]> {
     return this.request('/api/profile/prospects', { method: 'POST', body: JSON.stringify(input) });
   }
 

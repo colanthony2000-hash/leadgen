@@ -206,7 +206,14 @@ app.post('/api/profile/prospects', requireRoles('owner', 'admin'), async (req: R
   if (!profile.offerings.length) return res.status(409).json({ error: 'Add or approve at least one offering before searching for prospects.' });
   try {
     const employeeBand = typeof req.body?.employee_band === 'string' ? req.body.employee_band : undefined;
-    const matches = await worker.findBusinessProspects(profile, { employee_band: employeeBand });
+    const sizeFocus = req.body?.size_focus === 'all_sizes' ? 'all_sizes' : 'small_local';
+    const matches = await worker.findBusinessProspects(profile, {
+      employee_band: employeeBand,
+      customer_type: typeof req.body?.customer_type === 'string' ? req.body.customer_type.slice(0, 160) : undefined,
+      location: typeof req.body?.location === 'string' ? req.body.location.slice(0, 160) : undefined,
+      offering_name: typeof req.body?.offering_name === 'string' ? req.body.offering_name.slice(0, 160) : undefined,
+      size_focus: sizeFocus,
+    });
     res.json(matches);
   } catch (error: any) {
     res.status(400).json({ error: error?.message || 'Prospect search failed.' });

@@ -95,6 +95,14 @@ export interface NeedSearchInput {
   mode: NeedSearchMode;
 }
 
+export interface BusinessProspectSearchInput {
+  employee_band?: string;
+  customer_type?: string;
+  location?: string;
+  offering_name?: string;
+  size_focus?: 'small_local' | 'all_sizes';
+}
+
 export interface ProspectSearchRecord {
   id: string;
   search_type: 'buyers' | 'companies' | 'needs';

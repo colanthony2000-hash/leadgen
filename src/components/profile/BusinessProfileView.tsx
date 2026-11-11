@@ -29,6 +29,10 @@ export const BusinessProfileView: React.FC = () => {
   const [draft, setDraft] = useState<BusinessProfileResearchDraft | null>(null);
   const [matches, setMatches] = useState<BusinessProspectMatch[]>([]);
   const [buyerEmployeeBand, setBuyerEmployeeBand] = useState('');
+  const [buyerCustomerType, setBuyerCustomerType] = useState('');
+  const [buyerLocation, setBuyerLocation] = useState('');
+  const [buyerOfferingName, setBuyerOfferingName] = useState('');
+  const [buyerSizeFocus, setBuyerSizeFocus] = useState<'small_local' | 'all_sizes'>('small_local');
   const [hasSearchedBuyers, setHasSearchedBuyers] = useState(false);
   const [companySearchName, setCompanySearchName] = useState('');
   const [companySearchCategory, setCompanySearchCategory] = useState('');
@@ -55,7 +59,7 @@ export const BusinessProfileView: React.FC = () => {
       search_type: searchType,
       title: searchType === 'buyers' ? `Potential buyers for ${businessProfile.company_name}` : searchType === 'companies' ? `Company search: ${companySearchCategory || companySearchName || companySearchLocation}` : `Need/job search: ${needQuery}`,
       query_summary: searchType === 'buyers'
-        ? `Customers: ${(businessProfile.target_customer_types || []).join(', ') || 'not specified'} · Regions: ${businessProfile.target_regions.join(', ') || 'Nigeria'} · Employee size: ${buyerEmployeeBand || 'any'}`
+        ? `Customers: ${buyerCustomerType || (businessProfile.target_customer_types || []).join(', ') || 'not specified'} · Regions: ${buyerLocation || businessProfile.target_regions.join(', ') || 'Nigeria'} · Offering: ${buyerOfferingName || 'all profile offerings'} · Size focus: ${buyerSizeFocus === 'small_local' ? 'small/local' : 'all sizes'} · Employee size: ${buyerEmployeeBand || 'any'}`
         : searchType === 'companies' ? `Name: ${companySearchName || 'any'} · Category: ${companySearchCategory || 'any'} · Location: ${companySearchLocation || 'Nigeria'} · Employee size: ${companyEmployeeBand || 'any'}` : `Search type: ${needMode} · Need/job: ${needQuery} · Location: ${needLocation}`,
       results,
       created_at: createdAt,
@@ -140,7 +144,13 @@ export const BusinessProfileView: React.FC = () => {
     setBusy('prospects'); setMessage(''); setHasSearchedBuyers(true); setMatches([]);
     try {
       if (isDemoMode) throw new Error('Live prospect research is available after signing in with the Gemini key configured on the server.');
-      setMatches(await api.findBusinessProspects({ employee_band: buyerEmployeeBand || undefined }));
+      setMatches(await api.findBusinessProspects({
+        employee_band: buyerEmployeeBand || undefined,
+        customer_type: buyerCustomerType.trim() || undefined,
+        location: buyerLocation.trim() || undefined,
+        offering_name: buyerOfferingName || undefined,
+        size_focus: buyerSizeFocus,
+      }));
     } catch (error: any) { setMessage(error.message || 'Prospect search failed.'); }
     finally { setBusy(''); }
   };
@@ -308,8 +318,29 @@ export const BusinessProfileView: React.FC = () => {
     </section>
 
     {businessProfile.profile_approved_at && <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">3. Find organizations that could use your offerings</h2><p className="mt-1 text-xs text-slate-400">Search results are potential fits. Employee count is shown only when publicly supported or estimated; review the sources before approving.</p></div>
-        <div className="flex flex-col gap-2 sm:flex-row"><select aria-label="Filter potential buyers by employee count" className={fieldClass} value={buyerEmployeeBand} onChange={(e) => setBuyerEmployeeBand(e.target.value)}><option value="">Any employee count</option>{employeeBands.map((band) => <option key={band} value={band}>{band} employees</option>)}</select><button type="button" disabled={!!busy} onClick={searchProspects} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 text-sm font-semibold text-amber-200 disabled:opacity-50">{busy === 'prospects' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Find potential buyers</button></div></div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="space-y-1 text-xs text-slate-400">Who do you want to reach?
+          <input list="buyer-and-product-categories" className={fieldClass} placeholder="e.g. small secondary schools, SMEs" value={buyerCustomerType} onChange={(event) => setBuyerCustomerType(event.target.value)} />
+        </label>
+        <label className="space-y-1 text-xs text-slate-400">Where should we look?
+          <input list="nigerian-search-locations" className={fieldClass} placeholder="e.g. Ibadan, Oyo State" value={buyerLocation} onChange={(event) => setBuyerLocation(event.target.value)} />
+        </label>
+        <label className="space-y-1 text-xs text-slate-400">Which service or product?
+          <select className={fieldClass} value={buyerOfferingName} onChange={(event) => setBuyerOfferingName(event.target.value)}>
+            <option value="">All approved offerings</option>
+            {businessProfile.offerings.map((offering) => <option key={offering.id} value={offering.name}>{offering.name}</option>)}
+          </select>
+        </label>
+        <label className="space-y-1 text-xs text-slate-400">Prospect size focus
+          <select className={fieldClass} value={buyerSizeFocus} onChange={(event) => setBuyerSizeFocus(event.target.value as 'small_local' | 'all_sizes')}>
+            <option value="small_local">Small and local first (recommended)</option>
+            <option value="all_sizes">All organization sizes</option>
+          </select>
+        </label>
+      </div>
+      <p className="text-[11px] text-slate-500">Leave audience or location blank to use your approved company profile. Small/local prioritizes independent schools, local SMEs, churches, and training centres when your selected offering fits; unknown employee counts remain eligible.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">3. Find schools and businesses to approach</h2><p className="mt-1 text-xs text-slate-400">Matches are potential fits for your approved offerings, not proof of an active purchase. Employee counts may be estimated; review each source before outreach.</p></div>
+        <div className="flex flex-col gap-2 sm:flex-row"><select aria-label="Filter potential buyers by employee count" className={fieldClass} value={buyerEmployeeBand} onChange={(e) => setBuyerEmployeeBand(e.target.value)}><option value="">Any employee count</option>{employeeBands.map((band) => <option key={band} value={band}>{band} employees</option>)}</select><button type="button" disabled={!!busy} onClick={searchProspects} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 text-sm font-semibold text-amber-200 disabled:opacity-50">{busy === 'prospects' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Find prospects to contact</button></div></div>
       {matches.map((match) => { const alreadySaved = (businessProfile.approved_prospects || []).some((item) => item.company_name === match.company_name); return <article key={match.id} className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/70 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-semibold text-white">{match.company_name}</h3><p className="text-xs text-slate-400">{match.company_type} · {match.location}</p><p className="mt-1 text-xs text-slate-400">Employees: {match.employee_band || 'Unknown'}{match.employee_size_confidence === 'estimated' ? ' (AI estimate; verify)' : ''}</p><p className={`mt-1 text-xs ${match.evidence_status === 'grounded' ? 'text-emerald-300' : 'text-amber-300'}`}>{match.evidence_status === 'grounded' ? 'Source linked' : 'Candidate found; verify details before outreach'}</p></div><button type="button" disabled={alreadySaved} onClick={() => approveMatch(match)} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-50">{alreadySaved ? 'Approved' : 'Approve match'}</button></div><p className="text-sm text-slate-300">{match.description}</p><p className="text-xs text-amber-200">Potential fit: {match.match_reason}</p><div className="flex flex-wrap gap-2">{match.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">{source.title}<ExternalLink className="h-3 w-3" /></a>)}</div></article>; })}
       {matches.length > 0 && <button type="button" onClick={() => void saveSearchResults('buyers')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-400/30 px-3 py-2 text-sm font-semibold text-amber-200"><Save className="h-4 w-4" />Save {matches.length} results</button>}
       {hasSearchedBuyers && matches.length === 0 && !busy && !message && <p className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">Search returned no candidates for this profile. Check that its services and customer types are specific, then try again without an employee-size filter.</p>}
