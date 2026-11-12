@@ -7,6 +7,8 @@ import { demoApiEnabled, supabase } from '../../services/supabase';
 import { CURRENT_USER, SEED_MEMBERSHIPS, SEED_TENANTS } from '../../data/seedData';
 import type { Membership, Tenant, User } from '../../types';
 
+const PASSWORD_RECOVERY_REDIRECT_URL = 'https://leadgen.jeneconk.com/';
+
 interface AuthorizedWorkspaceResponse {
   user: User;
   tenants: Tenant[];
@@ -56,7 +58,7 @@ const LoginScreen: React.FC<{ onSignedIn: (session: Session) => void }> = ({ onS
     setError('');
     setNotice('');
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-      redirectTo: `${window.location.origin}/`,
+      redirectTo: PASSWORD_RECOVERY_REDIRECT_URL,
     });
     setSendingReset(false);
     if (resetError) {
@@ -242,7 +244,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     return <PasswordRecoveryScreen onComplete={() => {
       setPasswordRecovery(false);
       setAuthNotice('Your password has been updated. Sign in with your new password.');
-      void supabase?.auth.signOut();
+      void supabase?.auth.signOut({ scope: 'global' });
     }} />;
   }
 
