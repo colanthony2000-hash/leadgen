@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { Eye, EyeOff } from 'lucide-react';
 import { AppProvider } from '../../context/AppContext';
 import { api } from '../../services/api';
 import { demoApiEnabled, supabase } from '../../services/supabase';
@@ -23,7 +24,10 @@ const LoginScreen: React.FC<{ onSignedIn: (session: Session) => void }> = ({ onS
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -36,7 +40,30 @@ const LoginScreen: React.FC<{ onSignedIn: (session: Session) => void }> = ({ onS
       setError(authError?.message || 'Sign-in did not return a session.');
       return;
     }
+    setNotice('');
     onSignedIn(data.session);
+  };
+
+  const sendPasswordReset = async () => {
+    if (!supabase) return;
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setError('Enter your account email first, then choose “Forgot password?”.');
+      setNotice('');
+      return;
+    }
+    setSendingReset(true);
+    setError('');
+    setNotice('');
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/`,
+    });
+    setSendingReset(false);
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
+    setNotice('If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder.');
   };
 
   return (
@@ -55,11 +82,78 @@ const LoginScreen: React.FC<{ onSignedIn: (session: Session) => void }> = ({ onS
         </label>
         <label className="block text-xs text-slate-300 space-y-1.5">
           <span>Password</span>
-          <input autoComplete="current-password" type="password" required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
+          <span className="relative block">
+            <input autoComplete="current-password" type={passwordVisible ? 'text' : 'password'} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 pr-11 text-sm text-white outline-none focus:border-amber-400" />
+            <button type="button" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-slate-400 hover:text-white">
+              {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </span>
+        </label>
+        {error && <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">{error}</p>}
+        {notice && <p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">{notice}</p>}
+        <button disabled={submitting} className="w-full rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60">
+          {submitting ? 'Signing in…' : 'Sign in'}
+        </button>
+        <button type="button" onClick={() => void sendPasswordReset()} disabled={sendingReset} className="w-full text-center text-xs font-medium text-amber-300 hover:text-amber-200 disabled:opacity-60">
+          {sendingReset ? 'Sending reset link…' : 'Forgot password?'}
+        </button>
+      </form>
+    </main>
+  );
+};
+
+const PasswordRecoveryScreen: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const updatePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase) return;
+    if (password.length < 8) {
+      setError('Use a password with at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('The passwords do not match.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    setSubmitting(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    onComplete();
+  };
+
+  return (
+    <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-5">
+      <form onSubmit={updatePassword} className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-7 shadow-2xl space-y-5">
+        <div>
+          <h1 className="text-xl font-semibold">Choose a new password</h1>
+          <p className="mt-1 text-xs text-slate-400">Use at least 8 characters. You’ll sign in with it after it is updated.</p>
+        </div>
+        <label className="block space-y-1.5 text-xs text-slate-300">
+          <span>New password</span>
+          <span className="relative block">
+            <input autoComplete="new-password" type={passwordVisible ? 'text' : 'password'} required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 pr-11 text-sm text-white outline-none focus:border-amber-400" />
+            <button type="button" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-slate-400 hover:text-white">
+              {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </span>
+        </label>
+        <label className="block space-y-1.5 text-xs text-slate-300">
+          <span>Confirm new password</span>
+          <input autoComplete="new-password" type={passwordVisible ? 'text' : 'password'} required minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
         </label>
         {error && <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">{error}</p>}
         <button disabled={submitting} className="w-full rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60">
-          {submitting ? 'Signing in…' : 'Sign in'}
+          {submitting ? 'Updating password…' : 'Update password'}
         </button>
       </form>
     </main>
@@ -71,6 +165,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [workspace, setWorkspace] = useState<AuthorizedWorkspaceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [authNotice, setAuthNotice] = useState('');
 
   const authorize = async (nextSession: Session | null) => {
     setSession(nextSession);
@@ -111,7 +207,15 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       if (!active) return;
       void authorize(data.session).finally(() => setLoading(false));
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+        setSession(nextSession);
+        setWorkspace(null);
+        api.setAccessToken(nextSession?.access_token || null);
+        return;
+      }
+      if (event === 'SIGNED_OUT') setPasswordRecovery(false);
       if (active) void authorize(nextSession);
     });
     return () => {
@@ -134,8 +238,16 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     return <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6"><p role="alert" className="max-w-lg rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm">{error}</p></main>;
   }
 
+  if (passwordRecovery && session) {
+    return <PasswordRecoveryScreen onComplete={() => {
+      setPasswordRecovery(false);
+      setAuthNotice('Your password has been updated. Sign in with your new password.');
+      void supabase?.auth.signOut();
+    }} />;
+  }
+
   if (!session) {
-    return <>{error && <div role="alert" className="absolute inset-x-0 top-0 z-10 bg-rose-950 p-3 text-center text-xs text-rose-200">{error}</div>}<LoginScreen onSignedIn={(nextSession) => void authorize(nextSession)} /></>;
+    return <>{(error || authNotice) && <div role={error ? 'alert' : 'status'} className={`absolute inset-x-0 top-0 z-10 p-3 text-center text-xs ${error ? 'bg-rose-950 text-rose-200' : 'bg-emerald-950 text-emerald-200'}`}>{error || authNotice}</div>}<LoginScreen onSignedIn={(nextSession) => { setAuthNotice(''); void authorize(nextSession); }} /></>;
   }
 
   if (!workspace) {
